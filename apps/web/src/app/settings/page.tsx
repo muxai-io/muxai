@@ -254,12 +254,26 @@ const DEFAULT_CURRENCY_TERMS: CurrencyTerms = {
   PEPE: ["pepe"],
 };
 
+const CORE_SERVERS = ["wallet", "orchestrator"];
+const BUILTIN_SERVERS = [
+  { id: "news-analyst", label: "News Analyst", description: "Fetches cryptocurrency news from RSS feeds" },
+  { id: "chart-analyst", label: "Chart Analyst", description: "Fetches trading charts for technical analysis" },
+  { id: "contractor", label: "Contractor", description: "Consults hired external models via OpenRouter" },
+  { id: "orchestrator", label: "Orchestrator", description: "Team coordination — invoke direct reports" },
+  { id: "wallet", label: "Wallet", description: "Solana wallet access and x402 payments" },
+];
+
 function McpSection() {
   const [feeds, setFeeds] = useState<NewsFeed[]>([]);
   const [currencyTerms, setCurrencyTerms] = useState<CurrencyTerms>({});
+  const [disabledServers, setDisabledServers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // Card collapse state
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({ servers: true, feeds: false, currencies: false });
+  function toggleCard(key: string) { setOpenCards((p) => ({ ...p, [key]: !p[key] })); }
 
   // Feed add form
   const [showAddFeed, setShowAddFeed] = useState(false);
@@ -276,6 +290,7 @@ function McpSection() {
       .then((s) => {
         setFeeds(s.mcp_news_feeds ? JSON.parse(s.mcp_news_feeds) : DEFAULT_FEEDS);
         setCurrencyTerms(s.mcp_currency_terms ? JSON.parse(s.mcp_currency_terms) : DEFAULT_CURRENCY_TERMS);
+        setDisabledServers(s.mcp_disabled_servers ? JSON.parse(s.mcp_disabled_servers) : []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -289,6 +304,7 @@ function McpSection() {
         body: JSON.stringify({
           mcp_news_feeds: JSON.stringify(feeds),
           mcp_currency_terms: JSON.stringify(currencyTerms),
+          mcp_disabled_servers: JSON.stringify(disabledServers),
         }),
       });
       setSaved(true);
@@ -339,25 +355,72 @@ function McpSection() {
         <p className="text-sm text-muted-foreground mt-0.5">Configure data sources used by built-in MCP servers.</p>
       </div>
 
+      {/* Built-in Servers */}
+      <Card>
+        <button type="button" className="w-full text-left" onClick={() => toggleCard("servers")}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-sm">Built-in Servers</CardTitle>
+                <CardDescription className="mt-1">
+                  Toggle built-in MCP servers on or off globally. Changes take effect on the next agent run.
+                </CardDescription>
+              </div>
+              {openCards.servers ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+            </div>
+          </CardHeader>
+        </button>
+        {openCards.servers && (
+          <CardContent>
+            <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+              {BUILTIN_SERVERS.map((server) => {
+                const isCore = CORE_SERVERS.includes(server.id);
+                const isEnabled = !disabledServers.includes(server.id);
+                return (
+                  <li key={server.id} className="flex items-center justify-between gap-4 px-4 py-3 bg-background">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-none">{server.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{server.description}</p>
+                    </div>
+                    <Switch
+                      checked={isEnabled}
+                      disabled={isCore}
+                      onCheckedChange={(checked) => {
+                        setDisabledServers((prev) =>
+                          checked ? prev.filter((id) => id !== server.id) : [...prev, server.id]
+                        );
+                      }}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        )}
+      </Card>
+
       {/* News Feeds */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle className="text-sm">News Feeds</CardTitle>
-              <CardDescription className="mt-1">
-                RSS feeds used by the News Analyst MCP server. Changes take effect on the next agent run.
-              </CardDescription>
+        <button type="button" className="w-full text-left" onClick={() => toggleCard("feeds")}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-sm">News Feeds</CardTitle>
+                <CardDescription className="mt-1">
+                  RSS feeds used by the News Analyst MCP server. Changes take effect on the next agent run.
+                </CardDescription>
+              </div>
+              {openCards.feeds ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
             </div>
-            {!showAddFeed && (
-              <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => setShowAddFeed(true)}>
-                <Plus className="h-3.5 w-3.5" />
-                Add Feed
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </CardHeader>
+        </button>
+        {openCards.feeds && <CardContent className="space-y-4">
+          {!showAddFeed && (
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowAddFeed(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Feed
+            </Button>
+          )}
           {showAddFeed && (
             <form onSubmit={addFeed} className="rounded-lg border border-border p-4 space-y-4 bg-muted/20">
               <p className="text-sm font-medium">New Feed</p>
@@ -398,28 +461,31 @@ function McpSection() {
               ))}
             </ul>
           )}
-        </CardContent>
+        </CardContent>}
       </Card>
 
       {/* Currency Terms */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <CardTitle className="text-sm">Currency Terms</CardTitle>
-              <CardDescription className="mt-1">
-                Search terms used to match news articles to currencies. The News Analyst filters articles by these keywords.
-              </CardDescription>
+        <button type="button" className="w-full text-left" onClick={() => toggleCard("currencies")}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-sm">Currency Terms</CardTitle>
+                <CardDescription className="mt-1">
+                  Search terms used to match news articles to currencies. The News Analyst filters articles by these keywords.
+                </CardDescription>
+              </div>
+              {openCards.currencies ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
             </div>
-            {!showAddCurrency && (
-              <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => setShowAddCurrency(true)}>
-                <Plus className="h-3.5 w-3.5" />
-                Add Currency
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </CardHeader>
+        </button>
+        {openCards.currencies && <CardContent className="space-y-4">
+          {!showAddCurrency && (
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowAddCurrency(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Currency
+            </Button>
+          )}
           {showAddCurrency && (
             <form onSubmit={addCurrency} className="rounded-lg border border-border p-4 space-y-4 bg-muted/20">
               <p className="text-sm font-medium">New Currency</p>
@@ -458,7 +524,7 @@ function McpSection() {
               ))}
             </ul>
           )}
-        </CardContent>
+        </CardContent>}
       </Card>
 
       <Button size="sm" disabled={saving} onClick={handleSave}>

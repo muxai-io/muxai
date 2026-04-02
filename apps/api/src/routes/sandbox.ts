@@ -18,8 +18,12 @@ async function buildMcpConfig(): Promise<string> {
   const registry = JSON.parse(readFileSync(REGISTRY_PATH, "utf-8")) as {
     id: string; command: string; args: string[];
   }[];
+  // Check for globally disabled built-in servers
+  const disabledSetting = await prisma.setting.findUnique({ where: { key: "mcp_disabled_servers" } });
+  const disabled: string[] = disabledSetting?.value ? JSON.parse(disabledSetting.value) : [];
   const mcpServers: Record<string, unknown> = {};
   for (const s of registry) {
+    if (disabled.includes(s.id)) continue;
     mcpServers[s.id] = {
       command: s.command,
       args: s.args.map((a) => (path.isAbsolute(a) ? a : path.join(MUXAI_ROOT, a))),

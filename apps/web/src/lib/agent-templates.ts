@@ -39,6 +39,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     mcpPreset: "builtin",
     schedulePreset: "disabled",
     resultCard: { type: "research-summary", mapping: {} },
+    persistLogs: true,
     form: {
       name: "Team Lead",
       role: "ceo",

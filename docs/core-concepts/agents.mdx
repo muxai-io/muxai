@@ -1,0 +1,70 @@
+---
+title: "Agents"
+description: "The building blocks of muxAI. Each agent is an autonomous AI worker with a role, tools, and instructions."
+---
+
+## What is an agent?
+
+An agent is a configured Claude CLI instance with a specific role and set of tools. When you run an agent, muxAI spawns a `claude` process with the model, system prompt, MCP tools, and environment variables you defined.
+
+Agents are stored in the database and can be run on demand, on a schedule, or as part of a team.
+
+## Anatomy of an agent
+
+Every agent has these core properties:
+
+| Property | Description |
+|----------|-------------|
+| **Name** | Display name (e.g. "News Analyst") |
+| **Role** | Functional role (e.g. `news-analyst`, `ceo`) |
+| **Model** | Claude model to use (Opus, Sonnet, or Haiku) |
+| **SKILL.md** | System prompt that defines the agent's behavior and expertise |
+| **Default Prompt** | The task given to the agent on each run |
+| **MCP Mode** | Built-in (isolated tool set) or Global (inherits from Claude config) |
+| **Max Turns** | How many think-act cycles the agent gets per run |
+
+## Turns
+
+A turn is one cycle of the agent thinking, calling tools, and receiving results. Each tool call and its response counts as one turn.
+
+If a tool call fails (wrong argument, network error, etc.), the agent reads the error and retries on the next turn. This self-correction is useful but consumes turns.
+
+<Tip>
+Set `maxTurnsPerRun` high enough for the agent to complete its work plus recover from errors. Reporters typically need 10-15 turns. Lead agents that orchestrate a team need 25-30.
+</Tip>
+
+## Creating agents
+
+There are three ways to create an agent:
+
+<Steps>
+  <Step title="From a template">
+    Pick a pre-built template (News Analyst, Technical Analyst, Data Analyst, or Team Lead) on the **New Agent** page. Templates pre-fill the role, model, SKILL.md, and MCP settings.
+  </Step>
+  <Step title="From scratch">
+    Start with a blank agent and configure everything manually. Useful for custom roles outside the built-in templates.
+  </Step>
+  <Step title="Via team deploy">
+    Use **Deploy Team** to create a full team (lead + reporters) in one shot from a blueprint. See [Teams](/core-concepts/teams) for details.
+  </Step>
+</Steps>
+
+## Agent lifecycle
+
+An agent moves through these statuses:
+
+| Status | Meaning |
+|--------|---------|
+| **idle** | Ready to run |
+| **running** | Currently executing |
+| **paused** | Manually paused, skipped by scheduler |
+| **error** | Last run failed or process died unexpectedly |
+| **terminated** | Soft-deleted, hidden from active views |
+
+## Scheduling
+
+Agents can run on a cron schedule. Configure this on the agent form with presets (every 15 min, hourly, daily) or a custom cron expression. Scheduled agents are picked up automatically on API startup.
+
+## Wallets
+
+Every agent gets a Solana and Base/EVM wallet on creation. These are used for x402 payments (agents can pay for API access autonomously) and are AES-GCM encrypted in the database. View balances and export keys from the agent detail page.

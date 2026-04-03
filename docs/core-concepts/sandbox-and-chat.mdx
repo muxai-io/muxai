@@ -1,0 +1,41 @@
+---
+title: "Sandbox & Chat"
+description: "Ephemeral agent runs and interactive conversations without creating permanent agents."
+---
+
+## Sandbox
+
+The Sandbox is a scratchpad for quick, throwaway agent runs. Nothing is saved to the database. No agent record is created.
+
+Use it to:
+
+- Test a system prompt before assigning it to a real agent
+- Try a one-off task without cluttering your agent list
+- Experiment with different models or MCP configurations
+
+### How it works
+
+<Columns cols={2}>
+  <Card title="Configure" icon="sliders">
+    Set the model, system prompt, and whether to enable MCP servers. Everything lives in the left panel.
+  </Card>
+  <Card title="Converse" icon="messages">
+    Type a prompt and get a response. The conversation appears as a chat thread in the right panel.
+  </Card>
+</Columns>
+
+### Session persistence
+
+The Sandbox supports multi-turn conversations within a session. After the first response, muxAI captures the Claude CLI `session_id` and passes `--resume <sessionId>` on subsequent messages. The agent picks up where it left off with full context.
+
+Click **New Session** to reset and start fresh. Sessions are also cleared on page reload.
+
+<Tip>
+The Sandbox is fully stateless from the database's perspective. No runs, no logs, no results are persisted. When you close the page, it's gone.
+</Tip>
+
+## Chat
+
+Chat is similar to the Sandbox but designed for open-ended conversations rather than agent testing. It provides a clean chat interface for interacting with Claude directly.
+
+Both Sandbox and Chat are found in the sidebar under their respective sections.

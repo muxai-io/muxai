@@ -1,0 +1,56 @@
+---
+title: "Contractors"
+description: "Route tasks to non-Claude models like GPT-4o, Grok, or Gemini through OpenRouter-compatible APIs."
+---
+
+## What are contractors?
+
+Contractors let your Claude agents delegate tasks to other AI models. A contractor is a connection to an external model provider (OpenRouter, OpenAI, etc.) that agents can call via MCP tools during a run.
+
+Think of it as hiring a specialist. Your Claude agent stays in charge but can ask a GPT-4o or Grok instance for a second opinion, a different perspective, or a task that another model handles better.
+
+## How it works
+
+<Steps>
+  <Step title="Sign an agreement">
+    On the **Contractors** page, create a contractor by providing a name, API provider, API key, model ID, and base URL. This is the "contract."
+  </Step>
+  <Step title="Agent calls the contractor">
+    During a run, the agent uses the `ask_contractor` MCP tool with the contractor's name and a prompt. The MCP server validates the contract is active, then calls the external API.
+  </Step>
+  <Step title="Response flows back">
+    The contractor's response is returned to the agent as a tool result. The agent can use it alongside its own findings.
+  </Step>
+</Steps>
+
+## MCP tools
+
+The `mcp-contractor` server provides two tools:
+
+| Tool | Description |
+|------|-------------|
+| **ask_contractor** | Send a prompt to a named contractor and get back their response |
+| **list_contractors** | Discover which contractors are currently active |
+
+## Managing contractors
+
+The **Contractors** page shows all contracts as cards. Each card displays:
+
+- Provider and model
+- Status (active or inactive)
+- Toggle to activate/deactivate
+- Terminate button to permanently end the contract
+
+<Tip>
+Contractor API keys are stored securely. They are never returned on public API requests. Only internal MCP server calls (authenticated via the internal secret) can access them.
+</Tip>
+
+## Compatible providers
+
+Any provider with an OpenRouter-compatible chat completions API works:
+
+- **OpenRouter** (access to hundreds of models)
+- **OpenAI** (GPT-4o, GPT-4, etc.)
+- **xAI** (Grok)
+- **Google** (Gemini, via OpenRouter)
+- Any custom endpoint that implements the `/chat/completions` format

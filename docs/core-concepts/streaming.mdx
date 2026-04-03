@@ -1,0 +1,60 @@
+---
+title: "Streaming & History"
+description: "Real-time activity monitoring and run history across all agents."
+---
+
+## Global stream
+
+muxAI streams agent activity in real time via Server-Sent Events (SSE). A collapsible **Stream** panel sits at the bottom of every page, showing live output from all running agents.
+
+The stream shows:
+
+- **Run start/end** events with agent name and status
+- **Log lines** as agents think and call tools
+- **Tool calls** formatted as `tool_name(args)`
+- **Errors** when something goes wrong
+
+## Stream History
+
+The **Stream History** page (`/streams`) gives you a full-page view of both live activity and past runs. It combines:
+
+- **Live entries** from the current session (stored in browser localStorage, capped at 500)
+- **Database history** loaded from past runs below a divider
+
+This is where you monitor what's happening across your entire agent fleet.
+
+## Which agents appear in the stream?
+
+Only agents with `persistLogs` enabled show up in the stream and history. This is controlled per agent in the edit form.
+
+By default:
+
+| Agent type | persistLogs | Appears in stream |
+|------------|-------------|-------------------|
+| Lead agents | `true` | Yes |
+| Reporters (from team deploy) | `false` | No |
+| Standalone agents | `true` | Yes |
+
+This keeps the stream focused on team-level outputs. Reporter activity is still captured in each reporter's individual run history. You can always view a specific reporter's runs from their detail page.
+
+<Tip>
+If you want to debug a specific reporter, temporarily enable `persistLogs` on that agent. Remember to turn it off when done to avoid cluttering the stream.
+</Tip>
+
+## Run history
+
+Every agent run is recorded in the database as a `HeartbeatRun` with:
+
+- Status (succeeded, failed, cancelled, timed out)
+- Full log output
+- Result JSON (if the agent produced structured output)
+- Timestamps and exit code
+- Session ID (for resume support)
+
+View an agent's runs from its detail page or the **Runs** tab. Each run shows the complete log and, if available, a formatted result card.
+
+## Results
+
+The **Results** page (`/results`) shows all runs that produced structured JSON output. Each result is rendered as a card based on the agent's `resultCard` configuration (e.g. Trade Decision, Research Summary, Alert).
+
+The Dashboard also shows the latest result from your most recent run.

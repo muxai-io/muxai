@@ -1,0 +1,75 @@
+---
+title: "Orchestration"
+description: "How lead agents coordinate their team using the orchestrator MCP tools."
+---
+
+## The orchestrator
+
+When a lead agent has reporters, muxAI automatically injects two MCP tools and a team roster into the lead's system prompt. The lead doesn't need to know internal tool names. It just sees instructions like:
+
+> You have direct reports. Use the orchestrator tools to coordinate them.
+
+## Tools
+
+<Columns cols={2}>
+  <Card title="run_team" icon="users">
+    Invokes **all** reporters in parallel. Each reporter runs their own configured default prompt. Returns every reporter's name, role, status, and full output. Use this to gather initial findings from the whole team.
+  </Card>
+  <Card title="ask_reporter" icon="user">
+    Invokes **one** reporter by name. Optionally pass a `task` to override their default prompt. Use this for targeted follow-ups, re-runs, or when you need to provide specific context (e.g. a chart URL or asset pair).
+  </Card>
+</Columns>
+
+## When to use which
+
+| Scenario | Tool | Why |
+|----------|------|-----|
+| Initial data gathering | `run_team` | Fires all reporters in parallel, one turn |
+| Follow-up question to one analyst | `ask_reporter` | Targeted, with optional task override |
+| Lead provides per-reporter context | `ask_reporter` | Each reporter gets tailored input (asset, chart, timeframe) |
+| Resolve conflicting findings | `ask_reporter` | Re-run the analyst whose data you want to verify |
+
+## Name matching
+
+`ask_reporter` requires the **exact agent name** (not the role). If the lead gets the name wrong, the orchestrator returns an error listing available reporter names. The lead self-corrects on the next turn.
+
+```
+Reporter "technical-analyst" not found.
+Available reporters: Technical Analyst, News Analyst, Data Analyst
+```
+
+This is by design. The error message is informative enough for the agent to recover automatically.
+
+## Turn cost
+
+Each tool call and response consumes one turn. Understanding turn cost helps you set appropriate `maxTurnsPerRun` values:
+
+| Action | Turns used |
+|--------|-----------|
+| `run_team` (success) | 1 |
+| `ask_reporter` x3 (all succeed) | 3 |
+| `ask_reporter` with wrong name + retry | 2 |
+| Wrong names for 3 reporters + retry all | 4-6 |
+
+<Warning>
+If the lead calls `ask_reporter` individually for each reporter with wrong names, that's one wasted turn per reporter before the retry. With 3 reporters, that's 3 wasted turns. The lead template ships with `maxTurnsPerRun: 30` to absorb this overhead.
+</Warning>
+
+## Auto-injected context
+
+When an agent has reporters, muxAI appends a block to the system prompt:
+
+```markdown
+## Your Team
+
+You have direct reports. Use the orchestrator tools to coordinate them.
+
+- Invoke all reporters in parallel: call `mcp__orchestrator__run_team`
+- Invoke one reporter by name: call `mcp__orchestrator__ask_reporter`
+
+Your reporters:
+- News Analyst (news-analyst) - Assess sentiment and impact of crypto news
+- Technical Analyst (technical-analyst) - Identify directional bias from charts
+```
+
+This means your SKILL.md doesn't need to list orchestrator tools. Just write natural language about what the lead should do. The tool details are injected automatically.

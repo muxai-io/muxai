@@ -1,0 +1,81 @@
+---
+title: "MCP Servers"
+description: "How agents access external tools and data through the Model Context Protocol."
+---
+
+## What is MCP?
+
+MCP (Model Context Protocol) is how agents access external tools. An MCP server exposes a set of tools (functions) that the agent can call during a run. muxAI manages which MCP servers each agent can access.
+
+## Built-in servers
+
+muxAI ships with three MCP servers out of the box:
+
+| Server | Tools | Purpose |
+|--------|-------|---------|
+| **news-analyst** | RSS feeds, CoinMarketCap news | Fetch and analyze crypto news |
+| **chart-analyst** | Chart image analysis | Analyze trading charts from URLs |
+| **orchestrator** | `run_team`, `ask_reporter` | Coordinate team members (lead agents only) |
+
+Built-in servers are registered in `config/mcp-registry.json` and automatically available when an agent uses **Built-in** MCP mode.
+
+## Custom servers
+
+Add your own MCP servers through the **MCP Servers** page. Two transport types are supported:
+
+<Columns cols={2}>
+  <Card title="stdio" icon="terminal">
+    Runs as a local process. You provide the command and arguments. The agent communicates over stdin/stdout.
+
+    Example: a Python script that wraps a proprietary API.
+  </Card>
+  <Card title="HTTP" icon="globe">
+    Connects to a remote server via URL. Optionally include authentication headers.
+
+    Example: an MCP server running on another machine or cloud service.
+  </Card>
+</Columns>
+
+### Adding a custom server
+
+<Tabs>
+  <Tab title="Paste JSON" icon="paste">
+    Paste a standard MCP config JSON block. muxAI parses it, shows a preview, and imports all servers at once.
+
+    ```json
+    {
+      "mcpServers": {
+        "my-server": {
+          "command": "node",
+          "args": ["path/to/server.js"]
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Manual" icon="pen">
+    Fill in the fields: name, command/URL, arguments, optional headers, and description.
+  </Tab>
+</Tabs>
+
+## MCP modes
+
+Each agent is configured with one of two MCP modes:
+
+| Mode | Behavior |
+|------|----------|
+| **Built-in** (default) | Agent gets only the built-in servers plus any custom servers from the database. Uses `--mcp-config` and `--strict-mcp-config` flags for full isolation. |
+| **Global** | Agent inherits MCP servers from your global Claude CLI config (`~/.claude`). No isolation flags. |
+
+Built-in mode is recommended. It prevents global MCP servers from leaking into agent runs and ensures reproducible behavior.
+
+## How it works at runtime
+
+When an agent runs in Built-in mode, muxAI:
+
+1. Reads the built-in registry (`config/mcp-registry.json`)
+2. Loads custom servers from the database
+3. Merges them into a single MCP config JSON
+4. Passes it to the Claude CLI via `--mcp-config <path> --strict-mcp-config`
+
+The agent can only call tools from servers in that config. Nothing else.

@@ -1,0 +1,58 @@
+---
+title: "Teams"
+description: "Organize agents into hierarchical teams where a lead orchestrates reporters to produce collaborative outputs."
+---
+
+## How teams work
+
+A team is a group of agents connected through a hierarchy. One agent is the **lead** and the rest are **reporters**. There is no separate Team entity in the database. Teams are formed by setting an agent's `reportsTo` field to point at another agent.
+
+When the lead runs, it sees its reporters and can invoke them via orchestrator tools. Each reporter runs independently with its own model, tools, and instructions. The lead collects their findings and produces a final output.
+
+## Hierarchy
+
+Teams support arbitrary depth. A reporter can have its own reporters, creating a multi-level organization:
+
+```
+Lead (CEO)
+  Reporter A (News Analyst)
+  Reporter B (Technical Analyst)
+    Sub-reporter B1 (Chart Specialist)
+    Sub-reporter B2 (Indicator Specialist)
+  Reporter C (Data Analyst)
+```
+
+The **Teams** page shows both a flat view (each lead as a card) and a hierarchy view (full recursive tree from root to leaf).
+
+## Deploying a team
+
+The fastest way to create a team is the **Deploy Team** page. Pick a blueprint, customize agent names and prompts, and deploy. All agents are created atomically in a single transaction with wallets, hierarchy, and configuration already wired.
+
+<Steps>
+  <Step title="Pick a blueprint">
+    Select a pre-configured team composition. The **Trade Desk** blueprint includes a Team Lead, News Analyst, Technical Analyst, and Data Analyst.
+  </Step>
+  <Step title="Customize">
+    Edit each agent's name and default prompt before deploying. Model, role, SKILL.md, and MCP settings come from the underlying agent templates.
+  </Step>
+  <Step title="Deploy">
+    Hit **Deploy Team**. All agents are created in one shot. You land on the lead's detail page with all reporters visible in the Team panel.
+  </Step>
+</Steps>
+
+You can also build teams manually by creating agents one at a time and setting their **Reports To** field on the New Agent form.
+
+## Blueprints vs templates
+
+These are two different things:
+
+| Concept | What it defines | Where it lives |
+|---------|----------------|----------------|
+| **Agent template** | A single agent's config (role, model, SKILL.md, tools) | `agent-templates.ts` |
+| **Team blueprint** | A composition of agent templates into a team | `team-blueprints.ts` |
+
+A blueprint references agent templates by ID. When you deploy, each agent is built from its template with your customizations applied on top.
+
+## Stream history
+
+Only the lead agent's activity appears in Stream History by default. Reporter logs are suppressed (`persistLogs: false`) to keep the stream focused on team-level outputs. You can change this per agent in the edit form.

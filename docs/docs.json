@@ -32,6 +32,23 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Core Concepts",
+        "groups": [
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core-concepts/agents",
+              "core-concepts/teams",
+              "core-concepts/orchestration",
+              "core-concepts/mcp-servers",
+              "core-concepts/contractors",
+              "core-concepts/sandbox-and-chat",
+              "core-concepts/streaming"
+            ]
+          }
+        ]
       }
     ]
   },

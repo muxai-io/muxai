@@ -91,6 +91,7 @@ agentRoutes.get("/", async (_req, res) => {
     orderBy: { createdAt: "desc" },
     include: {
       reportsTo: { select: { id: true, name: true, role: true } },
+      reports: { select: { id: true, name: true, role: true, status: true, adapterConfig: true } },
       _count: { select: { runs: true } },
     },
   });

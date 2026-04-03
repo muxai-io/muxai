@@ -11,6 +11,7 @@ import { roleRoutes } from "./routes/roles";
 import { contractorRoutes } from "./routes/contractors";
 import { chatRoutes } from "./routes/chat";
 import { settingsRoutes } from "./routes/settings";
+import { teamRoutes } from "./routes/teams";
 import { initScheduler } from "./services/scheduler";
 import { onGlobalLog } from "./services/run-events";
 import { apiKeyAuth } from "./middleware/auth";
@@ -61,6 +62,7 @@ app.use("/api/roles", roleRoutes);
 app.use("/api/contractors", contractorRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/teams", teamRoutes);
 
 // GET /api/logs/stream — global SSE stream for all agent activity
 app.get("/api/logs/stream", (req, res) => {

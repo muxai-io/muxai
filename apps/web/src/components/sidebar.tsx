@@ -1,21 +1,33 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PlusCircle, Plug, Radio, FlaskConical, Users, FileJson, Settings, Handshake, MessageSquare } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Plug, Radio, FlaskConical, Users, UsersRound, FileJson, Settings, Handshake, MessageSquare, Rocket } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-const platformNav = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  exact?: boolean;
+}
+
+const platformNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/mcp-servers", label: "MCP Servers", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-const agentsNav = [
+const agentsNav: NavItem[] = [
   { href: "/agents/new", label: "New Agent", icon: PlusCircle, exact: true },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/contractors", label: "Contractors", icon: Handshake },
   { href: "/chat", label: "Chat", icon: MessageSquare },
+];
+
+const teamsNav: NavItem[] = [
+  { href: "/teams/deploy", label: "Deploy Team", icon: Rocket, exact: true },
+  { href: "/teams", label: "Teams", icon: UsersRound },
 ];
 
 export function Sidebar() {
@@ -26,6 +38,9 @@ export function Sidebar() {
     if (href === "/agents") {
       // Active for /agents and /agents/[id] but NOT /agents/new or /agents/[id]/edit
       return pathname === "/agents" || (pathname.startsWith("/agents/") && !pathname.endsWith("/new") && !pathname.includes("/edit"));
+    }
+    if (href === "/teams") {
+      return pathname === "/teams";
     }
     return pathname.startsWith(href);
   }
@@ -64,6 +79,26 @@ export function Sidebar() {
         <div className="space-y-0.5">
           <p className="px-2 pb-2 text-xs font-semibold text-muted-foreground/60 uppercase tracking-widest">Agents</p>
           {agentsNav.map(({ href, label, icon: Icon, exact }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                isActive(href, exact)
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              <Icon className={cn("h-4 w-4", isActive(href, exact) ? "text-primary" : "text-muted-foreground")} />
+              {label}
+            </Link>
+          ))}
+        </div>
+
+        {/* Teams */}
+        <div className="space-y-0.5">
+          <p className="px-2 pb-2 text-xs font-semibold text-muted-foreground/60 uppercase tracking-widest">Teams</p>
+          {teamsNav.map(({ href, label, icon: Icon, exact }) => (
             <Link
               key={href}
               href={href}

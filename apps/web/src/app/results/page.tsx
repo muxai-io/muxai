@@ -62,11 +62,13 @@ export default async function ResultsPage() {
                 </div>
               </div>
               {/* Result card */}
-              <RunResult
-                resultJson={run.resultJson!}
-                cardConfig={run.agent?.adapterConfig?.resultCard as ResultCardConfig | undefined}
-                compact
-              />
+              {run.resultJson && (
+                <RunResult
+                  resultJson={run.resultJson}
+                  cardConfig={run.agent?.adapterConfig?.resultCard as ResultCardConfig | undefined}
+                  compact
+                />
+              )}
             </div>
           ))}
         </div>

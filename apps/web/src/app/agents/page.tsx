@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bot, PlusCircle, CalendarClock, Users, AlertTriangle } from "lucide-react";
+import { Bot, PlusCircle, CalendarClock, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 import type { Agent } from "@/lib/types";
 import { AgentStatusBadge } from "@/components/agent-status-badge";
@@ -94,10 +94,6 @@ export default async function AgentsPage() {
   const active = agents.filter((a) => a.status !== "terminated");
   const errored = agents.filter((a) => a.status === "error");
 
-  const reportIds = new Set(agents.flatMap((a) => (a.reports ?? []).map((r) => r.id)));
-  const leads = agents.filter((a) => (a.reports ?? []).length > 0);
-  const standalone = agents.filter((a) => !reportIds.has(a.id) && (a.reports ?? []).length === 0);
-
   return (
     <div className="space-y-6">
 
@@ -105,7 +101,7 @@ export default async function AgentsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400">
-            <Users className="h-4 w-4" />
+            <Bot className="h-4 w-4" />
           </div>
           <div>
             <h1 className="text-xl font-semibold leading-none">Agents</h1>
@@ -142,44 +138,8 @@ export default async function AgentsPage() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-8">
-
-          {/* Teams */}
-          {leads.map((lead) => {
-            const members = (lead.reports ?? [])
-              .map((r) => agents.find((a) => a.id === r.id))
-              .filter(Boolean) as Agent[];
-            return (
-              <div key={lead.id} className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{lead.name} Team</span>
-                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{1 + members.length}</span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <AgentCard agent={lead} />
-                  {members.map((a) => <AgentCard key={a.id} agent={a} />)}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Standalone */}
-          {standalone.length > 0 && (
-            <div className="space-y-3">
-              {leads.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Standalone</span>
-                  <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{standalone.length}</span>
-                </div>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {standalone.map((a) => <AgentCard key={a.id} agent={a} />)}
-              </div>
-            </div>
-          )}
-
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {agents.map((a) => <AgentCard key={a.id} agent={a} />)}
         </div>
       )}
     </div>

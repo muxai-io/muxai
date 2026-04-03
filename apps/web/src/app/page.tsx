@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PlusCircle, Bot, Activity, Clock, Zap, Users, AlertTriangle, CalendarClock, Play, ChevronRight } from "lucide-react";
+import { PlusCircle, Bot, Activity, Clock, Zap, AlertTriangle, CalendarClock, Play, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/utils";
 import type { Agent, HeartbeatRun } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -143,38 +143,9 @@ function AgentList({ agents }: { agents: Agent[] }) {
   const terminated = agents.filter((a) => a.status === "terminated");
   const sorted = [...active, ...terminated];
 
-  const reportIds = new Set(sorted.flatMap((a) => (a.reports ?? []).map((r) => r.id)));
-  const leads = sorted.filter((a) => (a.reports ?? []).length > 0);
-  const standalone = sorted.filter((a) => !reportIds.has(a.id) && (a.reports ?? []).length === 0);
-
   return (
-    <div className="space-y-5">
-      {leads.map((lead) => (
-        <div key={lead.id} className="space-y-1.5">
-          <div className="flex items-center gap-2 px-1 pb-1">
-            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{lead.name} Team</span>
-          </div>
-          <AgentRow agent={lead} />
-          <div className="pl-3 ml-3.5 border-l border-border space-y-1.5">
-            {(lead.reports ?? []).map((report) => {
-              const full = sorted.find((a) => a.id === report.id);
-              return full ? <AgentRow key={full.id} agent={full} /> : null;
-            })}
-          </div>
-        </div>
-      ))}
-      {standalone.length > 0 && (
-        <div className="space-y-1.5">
-          {leads.length > 0 && (
-            <div className="flex items-center gap-2 px-1 pb-1">
-              <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Standalone</span>
-            </div>
-          )}
-          {standalone.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
-        </div>
-      )}
+    <div className="space-y-1.5">
+      {sorted.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
     </div>
   );
 }

@@ -261,6 +261,7 @@ const BUILTIN_SERVERS = [
   { id: "contractor", label: "Contractor", description: "Consults hired external models via OpenRouter" },
   { id: "orchestrator", label: "Orchestrator", description: "Team coordination — invoke direct reports" },
   { id: "wallet", label: "Wallet", description: "Solana wallet access and x402 payments" },
+  { id: "docs", label: "Docs", description: "Search and read muxAI platform documentation" },
 ];
 
 function McpSection() {

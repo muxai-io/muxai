@@ -83,5 +83,24 @@
         "description": "Make an HTTP request with automatic x402 payment. If the API returns 402 Payment Required, payment is made automatically from the agent's wallet and the request is retried."
       }
     ]
+  },
+  {
+    "id": "docs",
+    "label": "Docs",
+    "description": "Search and read muxai platform documentation. Agents can look up trade decision formats, orchestration behavior, SKILL.md conventions, and more.",
+    "command": "node",
+    "args": ["packages/mcp-docs/index.js"],
+    "tools": [
+      {
+        "name": "search_docs",
+        "fullName": "mcp__docs__search_docs",
+        "description": "Search the muxai documentation. Returns matching pages with titles, paths, and snippets."
+      },
+      {
+        "name": "get_doc_page",
+        "fullName": "mcp__docs__get_doc_page",
+        "description": "Retrieve the full content of a documentation page by its path."
+      }
+    ]
   }
 ]

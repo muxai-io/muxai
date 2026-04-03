@@ -9,13 +9,16 @@ MCP (Model Context Protocol) is how agents access external tools. An MCP server 
 
 ## Built-in servers
 
-muxAI ships with three MCP servers out of the box:
+muxAI ships with several MCP servers out of the box:
 
 | Server | Tools | Purpose |
 |--------|-------|---------|
 | **news-analyst** | RSS feeds, CoinMarketCap news | Fetch and analyze crypto news |
 | **chart-analyst** | Chart image analysis | Analyze trading charts from URLs |
 | **orchestrator** | `run_team`, `ask_reporter` | Coordinate team members (lead agents only) |
+| **contractor** | `ask_contractor`, `list_contractors` | Consult external LLM contractors |
+| **wallet** | `wallet_address`, `wallet_fetch` | Agent wallet access and x402 payments |
+| **docs** | `search_docs`, `get_doc_page` | Search and read muxAI platform documentation |
 
 Built-in servers are registered in `config/mcp-registry.json` and automatically available when an agent uses **Built-in** MCP mode.
 

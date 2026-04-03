@@ -1,0 +1,215 @@
+---
+title: "Build a Built-in MCP Server"
+description: "Create your own MCP server package that ships with your muxAI installation."
+---
+
+## Overview
+
+Built-in MCP servers live in the `packages/` directory and run as stdio processes alongside the platform. Each server exposes tools that agents can call during a run.
+
+muxAI ships with several built-in servers you can reference as examples:
+
+| Package | Pattern | What it does |
+|---------|---------|-------------|
+| `mcp-chart-analyst` | Direct tool | Fetches a chart image URL and returns base64 for Claude to analyze |
+| `mcp-news-analyst` | Aggregator | Pulls RSS feeds and CoinMarketCap data, filters by currency |
+| `mcp-docs` | Proxy | Forwards requests to a remote Mintlify MCP endpoint |
+| `mcp-orchestrator` | Internal API | Calls the muxAI API to invoke reporter agents |
+| `mcp-contractor` | Internal API | Calls the muxAI API to consult external LLM contractors |
+| `mcp-wallet` | Internal API | Provides wallet access and x402 payment for agents |
+
+## Quick start
+
+### 1. Create the package
+
+```bash
+mkdir packages/mcp-my-server
+```
+
+Create `packages/mcp-my-server/index.js`:
+
+```js
+#!/usr/bin/env node
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+
+const server = new Server(
+  { name: "my-server", version: "1.0.0" },
+  { capabilities: { tools: {} } }
+);
+
+// List available tools
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: [
+    {
+      name: "my_tool",
+      description: "Describe what this tool does so the agent knows when to use it.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The input parameter",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  ],
+}));
+
+// Handle tool calls
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  if (name === "my_tool") {
+    // Your logic here
+    const result = `You said: ${args.query}`;
+    return {
+      content: [{ type: "text", text: result }],
+    };
+  }
+
+  throw new Error(`Unknown tool: ${name}`);
+});
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+<Note>
+  All MCP server dependencies live in the root `package.json`, not in individual packages. This keeps installs fast and avoids duplication.
+</Note>
+
+### 2. Register in the MCP registry
+
+Add an entry to `config/mcp-registry.json`:
+
+```json
+{
+  "id": "my-server",
+  "label": "My Server",
+  "description": "A short description shown on the MCP Servers page.",
+  "command": "node",
+  "args": ["packages/mcp-my-server/index.js"],
+  "tools": [
+    {
+      "name": "my_tool",
+      "fullName": "mcp__my-server__my_tool",
+      "description": "Same description as in the tool definition."
+    }
+  ]
+}
+```
+
+The `tools` array is metadata for the UI. The actual tool definitions come from your server's `ListToolsRequestSchema` handler.
+
+### 3. Test it
+
+Restart the platform (`pnpm dev`) and check the **MCP Servers** page. Your server should appear in the Built-in section. Create an agent in Built-in MCP mode and it will have access to your tool.
+
+## Common patterns
+
+### Direct tool
+
+The simplest pattern. Your server does the work directly — call an API, process data, return results.
+
+See `mcp-chart-analyst` for a clean example: it fetches an image URL, converts to base64, and returns it for Claude to analyze.
+
+```js
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { image_url } = request.params.arguments;
+  const res = await fetch(image_url);
+  const buffer = await res.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString("base64");
+
+  return {
+    content: [
+      { type: "text", text: "Analyze this chart:" },
+      { type: "image", data: base64, mimeType: "image/png" },
+    ],
+  };
+});
+```
+
+### Proxy to a remote MCP
+
+When an MCP server already exists as a remote HTTP endpoint, you can wrap it as a local stdio server. This keeps the registry format consistent and lets the platform manage it like any other built-in.
+
+See `mcp-docs` for this pattern: it proxies to a Mintlify MCP endpoint.
+
+```js
+const REMOTE_MCP_URL = "https://example.com/mcp";
+
+async function proxyRequest(method, params = {}) {
+  const res = await fetch(REMOTE_MCP_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message);
+  return json.result;
+}
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const result = await proxyRequest("tools/call", {
+    name: request.params.name,
+    arguments: request.params.arguments,
+  });
+  return { content: [{ type: "text", text: result?.content?.[0]?.text }] };
+});
+```
+
+### Internal API access
+
+Servers that need to call the muxAI API (like the orchestrator or contractor servers) can use environment variables injected at runtime:
+
+- `MUXAI_API_URL` — the API base URL (e.g. `http://localhost:3001`)
+- `MUXAI_INTERNAL_SECRET` — secret for authenticated internal requests
+- `MUXAI_AGENT_ID`, `MUXAI_AGENT_NAME`, `MUXAI_AGENT_ROLE` — the calling agent's identity
+
+```js
+const API_URL = process.env.MUXAI_API_URL || "http://localhost:3001";
+const SECRET = process.env.MUXAI_INTERNAL_SECRET;
+
+async function apiCall(path) {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { "x-muxai-internal": SECRET },
+  });
+  return res.json();
+}
+```
+
+## Return types
+
+MCP tools can return different content types:
+
+```js
+// Text
+{ content: [{ type: "text", text: "Hello" }] }
+
+// Image (base64)
+{ content: [{ type: "image", data: base64String, mimeType: "image/png" }] }
+
+// Error
+{ content: [{ type: "text", text: "Something went wrong" }], isError: true }
+
+// Mixed (text + image)
+{ content: [
+  { type: "text", text: "Here is the chart analysis:" },
+  { type: "image", data: base64String, mimeType: "image/jpeg" },
+] }
+```
+
+## Tips
+
+- **Logging**: Use `process.stderr.write()` for debug output. MCP uses stdout for protocol messages, so `console.log` will break things.
+- **Timeouts**: Always set `AbortSignal.timeout()` on fetch calls to avoid hanging the agent's run.
+- **Tool descriptions**: Write descriptions as if briefing an agent. Be specific about what the tool does and when to use it. The agent decides which tools to call based on these descriptions.
+- **Naming**: Use `snake_case` for tool names. The full tool name the agent sees is `mcp__<server-id>__<tool-name>`.
+- **No package.json needed**: Dependencies go in the root `package.json`. Just import what you need.

@@ -50,7 +50,18 @@
           }
         ]
       }
-    ]
+    ],
+    {
+      "tab": "Guides",
+      "groups": [
+        {
+          "group": "Guides",
+          "pages": [
+            "guides/build-mcp-server"
+          ]
+        }
+      ]
+    }
   },
   "footerSocials": {
     "github": "https://github.com/muxai-io/muxai"

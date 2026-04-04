@@ -180,7 +180,7 @@ echo ""
 
 # --- API key ------------------------------------------------------------------
 
-CURRENT_KEY=$(grep '^API_KEY=' .env | cut -d'=' -f2 | tr -d '"')
+CURRENT_KEY=$(grep '^API_KEY=' .env | cut -d'=' -f2 | tr -d '"\r')
 if [ "$CURRENT_KEY" = "your-secret-key-change-me" ]; then
   GENERATED_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
   sed -i "s|^API_KEY=.*|API_KEY=$GENERATED_KEY|" .env
@@ -189,14 +189,14 @@ fi
 
 # --- Secrets ------------------------------------------------------------------
 
-CURRENT_INTERNAL=$(grep '^MUXAI_INTERNAL_SECRET=' .env | cut -d'=' -f2)
+CURRENT_INTERNAL=$(grep '^MUXAI_INTERNAL_SECRET=' .env | cut -d'=' -f2 | tr -d '\r')
 if [ "$CURRENT_INTERNAL" = "muxai-internal-secret-change-me" ]; then
   GENERATED_INTERNAL=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
   sed -i "s|^MUXAI_INTERNAL_SECRET=.*|MUXAI_INTERNAL_SECRET=$GENERATED_INTERNAL|" .env
   echo -e "${GREEN}  Internal secret generated${RESET}"
 fi
 
-CURRENT_WALLET=$(grep '^WALLET_ENCRYPTION_KEY=' .env | cut -d'=' -f2)
+CURRENT_WALLET=$(grep '^WALLET_ENCRYPTION_KEY=' .env | cut -d'=' -f2 | tr -d '\r')
 if [ "$CURRENT_WALLET" = "change-me-64-hex-chars" ]; then
   GENERATED_WALLET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
   sed -i "s|^WALLET_ENCRYPTION_KEY=.*|WALLET_ENCRYPTION_KEY=$GENERATED_WALLET|" .env

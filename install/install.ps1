@@ -194,7 +194,7 @@ Write-Host ""
 # --- API key ------------------------------------------------------------------
 
 $envContent = Get-Content ".env" -Raw
-$currentKey = if ($envContent -match '(?m)^API_KEY=(.+)') { $matches[1].Trim('"') } else { "" }
+$currentKey = if ($envContent -match '(?m)^API_KEY=(.+)') { $matches[1].Trim().Trim('"') } else { "" }
 if ($currentKey -eq "your-secret-key-change-me") {
   $generatedKey = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   $envContent = $envContent -replace '(?m)^API_KEY=.*', "API_KEY=$generatedKey"
@@ -203,14 +203,14 @@ if ($currentKey -eq "your-secret-key-change-me") {
 
 # --- Secrets ------------------------------------------------------------------
 
-$currentInternal = if ($envContent -match '(?m)^MUXAI_INTERNAL_SECRET=(.+)') { $matches[1] } else { "" }
+$currentInternal = if ($envContent -match '(?m)^MUXAI_INTERNAL_SECRET=(.+)') { $matches[1].Trim() } else { "" }
 if ($currentInternal -eq "muxai-internal-secret-change-me") {
   $generatedInternal = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   $envContent = $envContent -replace '(?m)^MUXAI_INTERNAL_SECRET=.*', "MUXAI_INTERNAL_SECRET=$generatedInternal"
   Write-Ok "Internal secret generated"
 }
 
-$currentWallet = if ($envContent -match '(?m)^WALLET_ENCRYPTION_KEY=(.+)') { $matches[1] } else { "" }
+$currentWallet = if ($envContent -match '(?m)^WALLET_ENCRYPTION_KEY=(.+)') { $matches[1].Trim() } else { "" }
 if ($currentWallet -eq "change-me-64-hex-chars") {
   $generatedWallet = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   $envContent = $envContent -replace '(?m)^WALLET_ENCRYPTION_KEY=.*', "WALLET_ENCRYPTION_KEY=$generatedWallet"

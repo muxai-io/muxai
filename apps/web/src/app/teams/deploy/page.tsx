@@ -343,22 +343,71 @@ export default function DeployTeamPage() {
       {/* Blueprint Picker */}
       <div className="space-y-3">
         <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Blueprint</Label>
-        <div className="flex gap-2">
-          {TEAM_BLUEPRINTS.map((bp) => (
-            <button
-              key={bp.id}
-              onClick={() => selectBlueprint(bp)}
-              className={cn(
-                "rounded-lg border px-4 py-3 text-left transition-colors",
-                selectedBlueprint?.id === bp.id
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card text-card-foreground hover:border-primary/50"
-              )}
-            >
-              <p className="text-sm font-medium">{bp.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{bp.description}</p>
-            </button>
-          ))}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {TEAM_BLUEPRINTS.map((bp) => {
+            const isSelected = selectedBlueprint?.id === bp.id;
+            const leadTpl = getTemplate(bp.members.find((m) => m.role === "lead")?.templateId ?? "");
+            const reporterTpls = bp.members
+              .filter((m) => m.role === "reporter")
+              .map((m) => getTemplate(m.templateId))
+              .filter(Boolean);
+            return (
+              <button
+                key={bp.id}
+                onClick={() => selectBlueprint(bp)}
+                className={cn(
+                  "group relative overflow-hidden rounded-xl border text-left transition-all duration-200 h-56",
+                  isSelected
+                    ? "border-primary ring-1 ring-primary/30"
+                    : "border-border hover:border-primary/50"
+                )}
+              >
+                {/* Background image */}
+                {bp.image && (
+                  <>
+                    <img
+                      src={bp.image}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-black/70 group-hover:bg-black/65 transition-colors duration-300" />
+                  </>
+                )}
+
+                {/* Content overlay */}
+                <div className="relative z-10 flex h-full flex-col justify-between p-5">
+                  {/* Top — title, description, count */}
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-base font-bold text-white">{bp.label}</p>
+                        <p className="text-xs text-white/60 mt-1 leading-relaxed">{bp.description}</p>
+                      </div>
+                      <span className="shrink-0 inline-flex items-center rounded-full bg-white/10 backdrop-blur-sm px-2 py-0.5 text-xs text-white/70">
+                        {bp.members.length}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bottom — agent roster */}
+                  <div className="flex flex-wrap gap-2">
+                    {leadTpl && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-2.5 py-1 text-xs text-white/90">
+                        <Crown className="h-3 w-3 text-primary" />
+                        {leadTpl.label}
+                      </span>
+                    )}
+                    {reporterTpls.map((tpl) => (
+                      <span key={tpl!.id} className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-2.5 py-1 text-xs text-white/70">
+                        <User className="h-3 w-3" />
+                        {tpl!.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -9,6 +9,7 @@ export interface TeamBlueprint {
   id: string;
   label: string;
   description: string;
+  image?: string;
   members: TeamBlueprintMember[];
 }
 
@@ -20,7 +21,8 @@ export const TEAM_BLUEPRINTS: TeamBlueprint[] = [
   {
     id: "trade-desk",
     label: "Trade Desk",
-    description: "Full crypto analysis team — lead orchestrator with news, technical, and data analysts.",
+    description: "Crypto analysis team that synthesizes OHLCV indicators, funding rates, open interest, news sentiment, and chart analysis into a structured trade decision.",
+    image: "/trading_desk_team.jpg",
     members: [
       { templateId: "team-lead", role: "lead" },
       { templateId: "news-analyst", role: "reporter" },

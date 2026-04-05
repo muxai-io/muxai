@@ -78,7 +78,10 @@ function toArray(val) {
 }
 
 function stripHtml(html) {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseRss(xml, sourceName) {
@@ -111,7 +114,7 @@ async function fetchFeed(feed) {
   try {
     const res = await fetch(feed.url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; muxai-news-analyst/1.0)" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return [];
     return parseRss(await res.text(), feed.name);

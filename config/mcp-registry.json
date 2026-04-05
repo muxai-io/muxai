@@ -109,6 +109,25 @@
     ]
   },
   {
+    "id": "crypto-data",
+    "label": "Crypto Data",
+    "description": "Fetches derivatives market data from Binance Futures. Provides current funding rates and open interest with 1h/4h/24h change tracking.",
+    "command": "node",
+    "args": ["packages/mcp-crypto-data/index.js"],
+    "tools": [
+      {
+        "name": "get_funding_rate",
+        "fullName": "mcp__crypto-data__get_funding_rate",
+        "description": "Get the current funding rate, mark price, index price, and next funding time for a futures pair."
+      },
+      {
+        "name": "get_open_interest",
+        "fullName": "mcp__crypto-data__get_open_interest",
+        "description": "Get current open interest with 1h, 4h, and 24h change percentages for a futures pair."
+      }
+    ]
+  },
+  {
     "id": "docs",
     "label": "Docs",
     "description": "Search and read muxai platform documentation. Agents can look up trade decision formats, orchestration behavior, SKILL.md conventions, and more.",

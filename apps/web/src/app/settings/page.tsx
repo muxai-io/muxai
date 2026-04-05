@@ -262,6 +262,7 @@ const BUILTIN_SERVERS = [
   { id: "orchestrator", label: "Orchestrator", description: "Team coordination — invoke direct reports" },
   { id: "wallet", label: "Wallet", description: "Solana wallet access and x402 payments" },
   { id: "crypto-ohlcv", label: "Crypto OHLCV", description: "Fetches OHLCV candlestick data from crypto exchanges" },
+  { id: "crypto-data", label: "Crypto Data", description: "Funding rates and open interest from Binance Futures" },
   { id: "docs", label: "Docs", description: "Search and read muxAI platform documentation" },
 ];
 

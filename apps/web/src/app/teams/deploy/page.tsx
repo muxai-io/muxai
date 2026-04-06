@@ -148,6 +148,7 @@ function buildAgentPayload(
       maxTurnsPerRun: Number(tpl.form.maxTurnsPerRun),
       useChrome: tpl.useChrome || undefined,
       persistLogs: tpl.persistLogs ?? true,
+      disallowedTools: tpl.form.disallowedTools || undefined,
       ...(tpl.resultCard ? { resultCard: tpl.resultCard } : {}),
     },
     runtimeConfig: {},

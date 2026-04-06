@@ -72,6 +72,8 @@ export default function NewAgentPage() {
   const [reportsToId, setReportsToId] = useState<string>("none");
   const [useChrome, setUseChrome] = useState(false);
   const [persistLogs, setPersistLogs] = useState(true);
+  const [reviewDecisions, setReviewDecisions] = useState(false);
+  const [disabledMcpTools, setDisabledMcpTools] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     apiFetch<McpRegistryResponse>("/api/mcp-servers")
@@ -97,7 +99,7 @@ export default function NewAgentPage() {
     model: "claude-sonnet-4-6",
     effort: "none",
     cwd: "",
-    allowedTools: "",
+    disallowedTools: "Read,Write,Edit,Bash,Grep,Glob,Agent",
     promptTemplate: "",
     defaultPrompt: "",
     maxTurnsPerRun: "10",
@@ -108,11 +110,26 @@ export default function NewAgentPage() {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  function splitDisallowed(raw: string): { system: string; mcp: Set<string> } {
+    const all = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    const mcp = new Set(all.filter((t) => t.startsWith("mcp__")));
+    const system = all.filter((t) => !t.startsWith("mcp__")).join(",");
+    return { system, mcp };
+  }
+
+  function mergeDisallowed(system: string, mcp: Set<string>): string {
+    const parts = system.split(",").map((s) => s.trim()).filter(Boolean);
+    return [...parts, ...mcp].join(",");
+  }
+
   async function applyTemplate(template: AgentTemplate) {
     setSelectedTemplate(template.id);
+    const { system, mcp } = splitDisallowed(template.form.disallowedTools);
+    setDisabledMcpTools(mcp);
     setForm((f) => ({
       ...f,
       ...template.form,
+      disallowedTools: system,
       promptTemplate: "",
       defaultPrompt: template.defaultPrompt ?? "",
       cwd: template.mcpPreset === "builtin" ? mcpRootPath : template.form.cwd,
@@ -130,6 +147,7 @@ export default function NewAgentPage() {
 
   function clearTemplate() {
     setSelectedTemplate(null);
+    setDisabledMcpTools(new Set());
     setForm({
       name: "",
       role: "general",
@@ -138,7 +156,7 @@ export default function NewAgentPage() {
       model: "claude-sonnet-4-6",
       effort: "none",
       cwd: "",
-      allowedTools: "",
+      disallowedTools: "Read,Write,Edit,Bash,Grep,Glob,Agent",
       promptTemplate: "",
       defaultPrompt: "",
       maxTurnsPerRun: "10",
@@ -154,10 +172,10 @@ export default function NewAgentPage() {
   function handleMcpPreset(value: string) {
     setMcpPreset(value);
     if (value === "builtin") {
-      set("allowedTools", "");
+      set("disallowedTools", "Read,Write,Edit,Bash,Grep,Glob,Agent");
       set("cwd", mcpRootPath);
     } else {
-      set("allowedTools", "");
+      set("disallowedTools", "Read,Write,Edit,Bash,Grep,Glob,Agent");
       set("cwd", "");
     }
   }
@@ -180,11 +198,12 @@ export default function NewAgentPage() {
             model: form.model,
             effort: form.effort !== "none" ? form.effort : undefined,
             cwd: form.cwd || undefined,
-            allowedTools: form.allowedTools || undefined,
+            disallowedTools: mergeDisallowed(form.disallowedTools, disabledMcpTools),
             promptTemplate: form.promptTemplate || undefined,
             defaultPrompt: form.defaultPrompt || undefined,
             useChrome: useChrome || undefined,
             persistLogs: persistLogs || undefined,
+            reviewDecisions: reviewDecisions || undefined,
             maxTurnsPerRun: Number(form.maxTurnsPerRun),
             ...(selectedTemplate ? (() => {
               const tpl = AGENT_TEMPLATES.find((t) => t.id === selectedTemplate);
@@ -373,6 +392,13 @@ export default function NewAgentPage() {
                 </div>
                 <Switch id="persistLogs" checked={persistLogs} onCheckedChange={setPersistLogs} />
               </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="reviewDecisions">Review Previous Decisions</Label>
+                  <p className="text-xs text-muted-foreground">Agent reviews its own past decisions before making a new one</p>
+                </div>
+                <Switch id="reviewDecisions" checked={reviewDecisions} onCheckedChange={setReviewDecisions} />
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="prompt">
                   SKILL.md <span className="text-muted-foreground">(optional)</span>
@@ -445,6 +471,89 @@ export default function NewAgentPage() {
                   <p className="text-xs text-muted-foreground">Override the default working directory for this agent.</p>
                 )}
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="disallowedTools">
+                  Disallowed Tools <span className="text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="disallowedTools"
+                  value={form.disallowedTools}
+                  onChange={(e) => set("disallowedTools", e.target.value)}
+                  placeholder="e.g. Read,Bash,Edit"
+                />
+                <p className="text-xs text-muted-foreground">Comma-separated list of tools the agent cannot use. Keeps agents focused on MCP tools only.</p>
+              </div>
+              {mcpPreset === "builtin" && builtInServers.length > 0 && (
+                <div className="space-y-2">
+                  <Label>MCP Tool Access</Label>
+                  <p className="text-xs text-muted-foreground">Toggle MCP servers or individual tools. Disabled items are added to the disallowed list.</p>
+                  <div className="space-y-1 max-h-64 overflow-y-auto rounded-md border p-2">
+                    {builtInServers.map((server) => {
+                      const serverToolNames = server.tools.map((t) => t.fullName);
+                      const allDisabled = serverToolNames.length > 0 && serverToolNames.every((t) => disabledMcpTools.has(t));
+                      const someDisabled = serverToolNames.some((t) => disabledMcpTools.has(t));
+
+                      function toggleServer() {
+                        setDisabledMcpTools((prev) => {
+                          const next = new Set(prev);
+                          if (allDisabled) {
+                            serverToolNames.forEach((t) => next.delete(t));
+                          } else {
+                            serverToolNames.forEach((t) => next.add(t));
+                          }
+                          return next;
+                        });
+                      }
+
+                      function toggleTool(fullName: string) {
+                        setDisabledMcpTools((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(fullName)) {
+                            next.delete(fullName);
+                          } else {
+                            next.add(fullName);
+                          }
+                          return next;
+                        });
+                      }
+
+                      return (
+                        <div key={server.id}>
+                          <button
+                            type="button"
+                            onClick={toggleServer}
+                            className="flex items-center gap-2 w-full text-left py-1 px-1 rounded hover:bg-muted text-sm font-medium"
+                          >
+                            <span className={`h-3 w-3 rounded-sm border flex items-center justify-center ${allDisabled ? "bg-destructive border-destructive" : someDisabled ? "bg-yellow-500/50 border-yellow-500" : "bg-primary border-primary"}`}>
+                              {allDisabled ? <span className="text-[9px] text-destructive-foreground">&#x2715;</span> : <span className="text-[9px] text-primary-foreground">&#x2713;</span>}
+                            </span>
+                            {server.label}
+                          </button>
+                          <div className="ml-5 space-y-0.5">
+                            {server.tools.map((tool) => {
+                              const isDisabled = disabledMcpTools.has(tool.fullName);
+                              return (
+                                <button
+                                  key={tool.fullName}
+                                  type="button"
+                                  onClick={() => toggleTool(tool.fullName)}
+                                  title={tool.description}
+                                  className="flex items-center gap-2 w-full text-left py-0.5 px-1 rounded hover:bg-muted"
+                                >
+                                  <span className={`h-2.5 w-2.5 rounded-sm border flex items-center justify-center ${isDisabled ? "bg-destructive border-destructive" : "bg-primary border-primary"}`}>
+                                    {isDisabled ? <span className="text-[8px] text-destructive-foreground">&#x2715;</span> : <span className="text-[8px] text-primary-foreground">&#x2713;</span>}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground font-mono">{tool.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </CardContent>
 
             <StepHeader step={4} title="Schedule" description="Run this agent automatically on a timer" />

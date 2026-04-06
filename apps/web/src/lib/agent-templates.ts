@@ -21,7 +21,7 @@ export interface AgentTemplate {
     capabilities: string;
     model: string;
     cwd: string;
-    allowedTools: string;
+    disallowedTools: string;
     maxTurnsPerRun: string;
     customCron: string;
   };
@@ -51,7 +51,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
         "You are an expert Team Lead skilled at gathering team feedback, facilitating constructive discussions, and making concise, well-reasoned decisions. Always stay professional, balanced, and solution-oriented. Be concise and decisive, keeping in mind your teams feedback.",
       model: "claude-sonnet-4-6",
       cwd: "",
-      allowedTools: "",
+      disallowedTools: "Read,Write,Edit,Bash,Grep,Glob,Agent,mcp__news-analyst__get_crypto_news,mcp__chart-analyst__analyze_chart,mcp__crypto-ohlcv__get_candles,mcp__crypto-ohlcv__get_indicators,mcp__crypto-ohlcv__search_symbols,mcp__crypto-data__get_funding_rate,mcp__crypto-data__get_open_interest,mcp__crypto-data__get_long_short_ratio,mcp__crypto-data__get_top_trader_positions,mcp__crypto-data__get_taker_buy_sell_volume",
       maxTurnsPerRun: "30",
       customCron: "",
     },
@@ -70,7 +70,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
       capabilities: "Cryptocurrency news gathering, sentiment analysis, impact assessment",
       model: "claude-sonnet-4-6",
       cwd: "",
-      allowedTools: "",
+      disallowedTools: "Read,Write,Edit,Bash,Grep,Glob,Agent,mcp__chart-analyst__analyze_chart,mcp__crypto-ohlcv__get_candles,mcp__crypto-ohlcv__get_indicators,mcp__crypto-ohlcv__search_symbols,mcp__crypto-data__get_funding_rate,mcp__crypto-data__get_open_interest,mcp__crypto-data__get_long_short_ratio,mcp__crypto-data__get_top_trader_positions,mcp__crypto-data__get_taker_buy_sell_volume,mcp__wallet__wallet_address,mcp__wallet__wallet_fetch,mcp__contractor__ask_contractor,mcp__contractor__list_contractors,mcp__orchestrator__run_team,mcp__orchestrator__ask_reporter,mcp__orchestrator__get_my_decisions",
       maxTurnsPerRun: "10",
       customCron: "",
     },
@@ -90,7 +90,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
       capabilities: "Chart pattern recognition, technical indicator analysis, support/resistance identification",
       model: "claude-opus-4-6",
       cwd: "",
-      allowedTools: "",
+      disallowedTools: "Read,Write,Edit,Bash,Grep,Glob,Agent,mcp__news-analyst__get_crypto_news,mcp__crypto-data__get_funding_rate,mcp__crypto-data__get_open_interest,mcp__crypto-data__get_long_short_ratio,mcp__crypto-data__get_top_trader_positions,mcp__crypto-data__get_taker_buy_sell_volume,mcp__wallet__wallet_address,mcp__wallet__wallet_fetch,mcp__contractor__ask_contractor,mcp__contractor__list_contractors,mcp__orchestrator__run_team,mcp__orchestrator__ask_reporter,mcp__orchestrator__get_my_decisions",
       maxTurnsPerRun: "10",
       customCron: "",
     },
@@ -110,7 +110,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
       capabilities: "Open interest analysis, funding rate interpretation, fear & greed assessment",
       model: "claude-sonnet-4-6",
       cwd: "",
-      allowedTools: "",
+      disallowedTools: "Read,Write,Edit,Bash,Grep,Glob,Agent,mcp__news-analyst__get_crypto_news,mcp__chart-analyst__analyze_chart,mcp__crypto-ohlcv__get_candles,mcp__crypto-ohlcv__get_indicators,mcp__crypto-ohlcv__search_symbols,mcp__wallet__wallet_address,mcp__wallet__wallet_fetch,mcp__contractor__ask_contractor,mcp__contractor__list_contractors,mcp__orchestrator__run_team,mcp__orchestrator__ask_reporter,mcp__orchestrator__get_my_decisions",
       maxTurnsPerRun: "10",
       customCron: "",
     },

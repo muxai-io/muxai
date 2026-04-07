@@ -560,7 +560,9 @@ function NotificationsSection() {
     try {
       const settings = await apiFetch<Record<string, string>>("/api/settings");
       const raw = settings.notification_channels;
-      setChannels(raw ? JSON.parse(raw) : []);
+      let parsed: NotificationChannel[] = [];
+      if (raw) { try { parsed = JSON.parse(raw); } catch { /* corrupted setting, reset */ } }
+      setChannels(parsed);
     } finally {
       setLoading(false);
     }

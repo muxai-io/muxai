@@ -53,7 +53,9 @@ function deriveServerName(obj: Record<string, unknown>): string {
 }
 
 function parseMcpJson(raw: string): ParsedServer[] {
-  const parsed = JSON.parse(raw);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let parsed: any;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("Invalid JSON — check your syntax"); }
 
   // Single flat server: { "type": "http", "url": "...", ... }
   if (isSingleServerConfig(parsed)) {
@@ -159,7 +161,9 @@ export default function McpServersPage() {
     try {
       const args = form.args.split("\n").map((a) => a.trim()).filter(Boolean);
       let headers: Record<string, string> | undefined;
-      if (form.headers.trim()) headers = JSON.parse(form.headers);
+      if (form.headers.trim()) {
+        try { headers = JSON.parse(form.headers); } catch { throw new Error("Invalid JSON in headers field"); }
+      }
       await apiFetch("/api/mcp-servers", {
         method: "POST",
         body: JSON.stringify({ name: form.name, label: form.label, command: form.command, args, headers, description: form.description || undefined }),

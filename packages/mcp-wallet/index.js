@@ -50,15 +50,23 @@ async function initWallet() {
   const client = new x402Client();
 
   if (keyHexEvm && addressEvm) {
-    const evmSigner = privateKeyToAccount(keyHexEvm);
-    registerExactEvmScheme(client, { signer: evmSigner });
-    log(`EVM wallet ready: ${addressEvm}`);
+    try {
+      const evmSigner = privateKeyToAccount(keyHexEvm);
+      registerExactEvmScheme(client, { signer: evmSigner });
+      log(`EVM wallet ready: ${addressEvm}`);
+    } catch (err) {
+      log(`EVM wallet init failed: ${err.message}`);
+    }
   }
 
   if (keyBytes && address) {
-    const svmSigner = await createKeyPairSignerFromBytes(Uint8Array.from(keyBytes));
-    registerExactSvmScheme(client, { signer: svmSigner });
-    log(`Solana wallet ready: ${address}`);
+    try {
+      const svmSigner = await createKeyPairSignerFromBytes(Uint8Array.from(keyBytes));
+      registerExactSvmScheme(client, { signer: svmSigner });
+      log(`Solana wallet ready: ${address}`);
+    } catch (err) {
+      log(`Solana wallet init failed: ${err.message}`);
+    }
   }
 
   paymentAxios = wrapAxiosWithPayment(axios.create(), client);

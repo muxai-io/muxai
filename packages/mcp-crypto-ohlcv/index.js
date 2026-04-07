@@ -34,6 +34,7 @@ const EXCHANGES = {
       if (!res.ok) throw new Error(`Binance ${res.status}`);
       const data = await res.json();
       const q = query.toUpperCase().replace(/[\/\-]/g, "");
+      if (!Array.isArray(data.symbols)) throw new Error("Unexpected response from Binance exchangeInfo");
       return data.symbols
         .filter((s) => s.status === "TRADING" && (s.symbol.includes(q) || s.baseAsset.includes(q) || s.quoteAsset.includes(q)))
         .slice(0, 20)

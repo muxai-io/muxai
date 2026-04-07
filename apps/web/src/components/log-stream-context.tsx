@@ -69,47 +69,67 @@ export function LogStreamProvider({ children }: { children: React.ReactNode }) {
     saveToStorage(entries);
   }, [entries]);
 
-  // SSE connection
+  // SSE connection with auto-reconnect
   useEffect(() => {
-    const es = new EventSource(`${API_URL}/api/logs/stream`);
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
 
-    es.onmessage = (e) => {
-      let event: GlobalLogEvent;
-      try { event = JSON.parse(e.data); } catch { return; }
+    function connect() {
+      if (cancelled) return;
+      es = new EventSource(`${API_URL}/api/logs/stream`);
 
-      if (event.type === "run_start") {
-        setActiveRuns((n) => n + 1);
-        setEntries((prev) => [
-          { id: nextId++, ts: event.ts, agentName: event.agentName, agentId: event.agentId, kind: "run_start" as const, content: "started" },
-          ...prev,
-        ].slice(0, MAX_STORED));
-        return;
-      }
+      es.onmessage = (e) => {
+        let event: GlobalLogEvent;
+        try { event = JSON.parse(e.data); } catch { return; }
 
-      if (event.type === "run_end") {
-        setActiveRuns((n) => Math.max(0, n - 1));
-        setEntries((prev) => [
-          { id: nextId++, ts: event.ts, agentName: event.agentName, agentId: event.agentId, kind: "run_end" as const, content: event.status, status: event.status },
-          ...prev,
-        ].slice(0, MAX_STORED));
-        return;
-      }
+        if (event.type === "run_start") {
+          setActiveRuns((n) => n + 1);
+          setEntries((prev) => [
+            { id: nextId++, ts: event.ts, agentName: event.agentName, agentId: event.agentId, kind: "run_start" as const, content: "started" },
+            ...prev,
+          ].slice(0, MAX_STORED));
+          return;
+        }
 
-      const lines = event.data.split("\n").filter((l) => l.trim());
-      const newEntries: LogEntry[] = lines.map((line) => ({
-        id: nextId++,
-        ts: event.ts,
-        agentName: event.agentName,
-        agentId: event.agentId,
-        kind: (line.startsWith("▶") ? "tool" : "text") as LogEntryKind,
-        content: line,
-      })).reverse();
+        if (event.type === "run_end") {
+          setActiveRuns((n) => Math.max(0, n - 1));
+          setEntries((prev) => [
+            { id: nextId++, ts: event.ts, agentName: event.agentName, agentId: event.agentId, kind: "run_end" as const, content: event.status, status: event.status },
+            ...prev,
+          ].slice(0, MAX_STORED));
+          return;
+        }
 
-      setEntries((prev) => [...newEntries, ...prev].slice(0, MAX_STORED));
+        const lines = event.data.split("\n").filter((l) => l.trim());
+        const newEntries: LogEntry[] = lines.map((line) => ({
+          id: nextId++,
+          ts: event.ts,
+          agentName: event.agentName,
+          agentId: event.agentId,
+          kind: (line.startsWith("▶") ? "tool" : "text") as LogEntryKind,
+          content: line,
+        })).reverse();
+
+        setEntries((prev) => [...newEntries, ...prev].slice(0, MAX_STORED));
+      };
+
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (!cancelled) {
+          reconnectTimer = setTimeout(connect, 5000);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      es?.close();
     };
-
-    es.onerror = () => {};
-    return () => es.close();
   }, []);
 
   const clear = () => {

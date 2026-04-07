@@ -56,7 +56,8 @@ async function callContractor(contractor, prompt) {
     const body = await res.text();
     throw new Error(`Contractor API error ${res.status}: ${body}`);
   }
-  const data = await res.json();
+  let data;
+  try { data = await res.json(); } catch { throw new Error(`Contractor API returned invalid JSON`); }
   return data.choices?.[0]?.message?.content ?? "(no response)";
 }
 

@@ -40,7 +40,9 @@ async function initWallet() {
   if (res.status === 404) throw new Error("This agent has no wallet. Generate one from the agent detail page.");
   if (!res.ok) throw new Error(`Failed to fetch wallet key: ${res.status}`);
 
-  const { address, keyBytes, addressEvm, keyHexEvm } = await res.json();
+  let walletData;
+  try { walletData = await res.json(); } catch { throw new Error("Invalid JSON from wallet key endpoint"); }
+  const { address, keyBytes, addressEvm, keyHexEvm } = walletData;
 
   walletAddress = address;
   walletAddressEvm = addressEvm;
@@ -108,11 +110,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const { url, method = "GET", headers = {}, body } = args;
       log(`${method} ${url}`);
 
+      let parsedBody;
+      if (body) {
+        try { parsedBody = JSON.parse(body); } catch { throw new Error("Invalid JSON in body parameter"); }
+      }
+
       const response = await paymentAxios.request({
         url,
         method,
         headers,
-        ...(body ? { data: JSON.parse(body) } : {}),
+        ...(parsedBody ? { data: parsedBody } : {}),
       });
 
       const text = typeof response.data === "string"

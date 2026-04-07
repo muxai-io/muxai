@@ -35,7 +35,7 @@ async function invokeAgent(agentId, task) {
     body: JSON.stringify({ task }),
   });
   if (!res.ok) throw new Error(`Failed to invoke agent ${agentId}: ${res.status}`);
-  return res.json();
+  try { return await res.json(); } catch { throw new Error(`Invalid JSON from invoke endpoint for agent ${agentId}`); }
 }
 
 async function pollRun(runId, agentName, intervalMs = 4000, timeoutMs = 300000) {
@@ -44,7 +44,8 @@ async function pollRun(runId, agentName, intervalMs = 4000, timeoutMs = 300000) 
   while (Date.now() < deadline) {
     const res = await fetch(`${getApiUrl()}/api/runs/${runId}`, { headers: internalHeaders() });
     if (!res.ok) throw new Error(`Failed to poll run ${runId}: ${res.status}`);
-    const run = await res.json();
+    let run;
+    try { run = await res.json(); } catch { throw new Error(`Invalid JSON from poll endpoint for run ${runId}`); }
     if (run.status !== "running" && run.status !== "queued") {
       log(`${agentName} finished — status: ${run.status}`);
       return run;

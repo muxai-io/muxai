@@ -151,17 +151,17 @@
     "id": "docs",
     "label": "Docs",
     "description": "Search and read muxai platform documentation. Agents can look up trade decision formats, orchestration behavior, SKILL.md conventions, and more.",
-    "command": "node",
-    "args": ["packages/mcp-docs/index.js"],
+    "type": "http",
+    "url": "https://muxaiio.mintlify.app/mcp",
     "tools": [
       {
-        "name": "search_docs",
-        "fullName": "mcp__docs__search_docs",
+        "name": "search_mux_ai",
+        "fullName": "mcp__docs__search_mux_ai",
         "description": "Search the muxai documentation. Returns matching pages with titles, paths, and snippets."
       },
       {
-        "name": "get_doc_page",
-        "fullName": "mcp__docs__get_doc_page",
+        "name": "get_page_mux_ai",
+        "fullName": "mcp__docs__get_page_mux_ai",
         "description": "Retrieve the full content of a documentation page by its path."
       }
     ]

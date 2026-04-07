@@ -184,8 +184,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const data = await res.json();
 
-      if (data.count === 0) {
-        return { content: [{ type: "text", text: `No previous decisions found for "${agentName}".` }] };
+      if (!data.decisions || data.count === 0) {
+        return { content: [{ type: "text", text: `No previous decisions found.` }] };
       }
 
       const lines = data.decisions.map((d, i) => {

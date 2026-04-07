@@ -421,10 +421,23 @@ function spawnClaudeProcess(opts: {
 
   if (persistLogs) emitGlobalLog({ type: "run_start", agentId: agent.id, agentName, runId: run.id, ts: Date.now() });
 
-  const child = spawn(CLAUDE_CLI, args, { cwd, env, shell: false });
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(CLAUDE_CLI, args, { cwd, env, shell: false });
+  } catch (err: any) {
+    const errorMsg = `Failed to spawn process: ${err.message}`;
+    console.error(`[heartbeat] ${errorMsg}`);
+    emitRunLog(run.id, errorMsg + "\n");
+    emitRunDone(run.id, "failed", -1);
+    if (persistLogs) emitGlobalLog({ type: "run_end", agentId: agent.id, agentName, runId: run.id, status: "failed", ts: Date.now() });
+    prisma.heartbeatRun.update({ where: { id: run.id }, data: { status: "failed", finishedAt: new Date(), errorMsg, logs: errorMsg } }).catch(() => {});
+    prisma.agent.update({ where: { id: agent.id }, data: { status: "error" } }).catch(() => {});
+    prisma.wakeupRequest.update({ where: { id: wakeupId }, data: { status: "finished", finishedAt: new Date() } }).catch(() => {});
+    return;
+  }
   activeProcesses.set(run.id, child);
 
-  child.stdout.on("data", (data: Buffer) => {
+  child.stdout!.on("data", (data: Buffer) => {
     stdoutBuffer += data.toString();
     const lines = stdoutBuffer.split("\n");
     stdoutBuffer = lines.pop() ?? "";
@@ -442,7 +455,7 @@ function spawnClaudeProcess(opts: {
     }
   });
 
-  child.stderr.on("data", (data: Buffer) => {
+  child.stderr!.on("data", (data: Buffer) => {
     const lines = data.toString().split("\n");
     for (const line of lines) {
       if (!line.trim()) continue;
@@ -515,19 +528,20 @@ function spawnClaudeProcess(opts: {
 
   child.on("error", async (err) => {
     activeProcesses.delete(run.id);
-    await prisma.heartbeatRun.update({
-      where: { id: run.id },
-      data: {
-        status: "failed",
-        finishedAt: new Date(),
-        errorMsg: err.message,
-        logs: chunks.join(""),
-      },
-    });
-    await prisma.agent.update({ where: { id: agent.id }, data: { status: "error" } });
-    await prisma.wakeupRequest.update({
-      where: { id: wakeupId },
-      data: { status: "finished", finishedAt: new Date() },
-    });
+    const errorMsg = `Process error: ${err.message}`;
+    console.error(`[heartbeat] ${errorMsg}`);
+    emitRunLog(run.id, errorMsg + "\n");
+    emitRunDone(run.id, "failed", -1);
+    if (persistLogs) emitGlobalLog({ type: "run_end", agentId: agent.id, agentName, runId: run.id, status: "failed", ts: Date.now() });
+    try {
+      await prisma.heartbeatRun.update({
+        where: { id: run.id },
+        data: { status: "failed", finishedAt: new Date(), errorMsg, logs: chunks.join("") },
+      });
+      await prisma.agent.update({ where: { id: agent.id }, data: { status: "error" } });
+      await prisma.wakeupRequest.update({ where: { id: wakeupId }, data: { status: "finished", finishedAt: new Date() } });
+    } catch (dbErr: any) {
+      console.error(`[heartbeat] DB cleanup failed after process error: ${dbErr.message}`);
+    }
   });
 }

@@ -127,24 +127,29 @@ mcpServerRoutes.post("/:id/test", async (req, res) => {
       // stdio MCP: spawn process, send tools/list, read response
       const { spawn } = await import("child_process");
       const args = (server.args as string[]) ?? [];
-      const child = spawn(server.command, args, {
-        stdio: ["pipe", "pipe", "pipe"],
-        cwd: MUXAI_IO_ROOT,
-        env: { ...process.env },
-      });
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(server.command, args, {
+          stdio: ["pipe", "pipe", "pipe"],
+          cwd: MUXAI_IO_ROOT,
+          env: { ...process.env },
+        });
+      } catch (err: any) {
+        return res.status(500).json({ ok: false, error: `Failed to spawn MCP server: ${err.message}` });
+      }
 
       let stdout = "";
       let stderr = "";
-      child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-      child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+      child.stdout!.on("data", (d: Buffer) => { stdout += d.toString(); });
+      child.stderr!.on("data", (d: Buffer) => { stderr += d.toString(); });
 
       // Send initialize then tools/list
-      child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "muxai-test", version: "1.0.0" } } }) + "\n");
-      child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }) + "\n");
+      child.stdin!.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "muxai-test", version: "1.0.0" } } }) + "\n");
+      child.stdin!.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }) + "\n");
 
       const timeout = setTimeout(() => { child.kill("SIGTERM"); }, 10000);
 
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         const check = () => {
           // Look for the tools/list response (id: 2)
           if (stdout.includes('"id":2') || stdout.includes('"id": 2')) {
@@ -153,8 +158,9 @@ mcpServerRoutes.post("/:id/test", async (req, res) => {
             resolve();
           }
         };
-        child.stdout.on("data", check);
+        child.stdout!.on("data", check);
         child.on("close", () => { clearTimeout(timeout); resolve(); });
+        child.on("error", (err) => { clearTimeout(timeout); reject(err); });
       });
 
       // Parse the tools/list response

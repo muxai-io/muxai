@@ -198,13 +198,20 @@ chatRoutes.post("/send", async (req, res) => {
     ...(agentId ? { MUXAI_AGENT_ID: agentId } : {}),
   };
 
-  const child = spawn(CLAUDE_CLI, args, { cwd, env, shell: false });
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(CLAUDE_CLI, args, { cwd, env, shell: false });
+  } catch (err: any) {
+    emitRunLog(runId, `Failed to spawn process: ${err.message}\n`);
+    emitRunDone(runId, "failed", -1);
+    return res.status(500).json({ error: `Failed to start chat process: ${err.message}` });
+  }
   active.set(runId, child);
 
   const chunks: string[] = [];
   let stdoutBuffer = "";
 
-  child.stdout.on("data", (data: Buffer) => {
+  child.stdout!.on("data", (data: Buffer) => {
     stdoutBuffer += data.toString();
     const lines = stdoutBuffer.split("\n");
     stdoutBuffer = lines.pop() ?? "";
@@ -221,7 +228,7 @@ chatRoutes.post("/send", async (req, res) => {
     }
   });
 
-  child.stderr.on("data", (data: Buffer) => {
+  child.stderr!.on("data", (data: Buffer) => {
     for (const line of data.toString().split("\n")) {
       if (!line.trim()) continue;
       if (/\b(error|failed|fatal)\b/i.test(line)) emitRunLog(runId, `✗ ${line}\n`);

@@ -110,12 +110,19 @@ sandboxRoutes.post("/run", async (req, res) => {
     } catch { /* proceed without MCP if registry unreadable */ }
   }
 
-  const child = spawn(CLAUDE_CLI, args, { cwd: MUXAI_ROOT, env: process.env as Record<string, string>, shell: false });
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(CLAUDE_CLI, args, { cwd: MUXAI_ROOT, env: process.env as Record<string, string>, shell: false });
+  } catch (err: any) {
+    emitRunLog(runId, `Failed to spawn process: ${err.message}\n`);
+    emitRunDone(runId, "failed", -1);
+    return res.status(500).json({ error: `Failed to start sandbox process: ${err.message}` });
+  }
   active.set(runId, child);
 
   let stdoutBuffer = "";
 
-  child.stdout.on("data", (data: Buffer) => {
+  child.stdout!.on("data", (data: Buffer) => {
     stdoutBuffer += data.toString();
     const lines = stdoutBuffer.split("\n");
     stdoutBuffer = lines.pop() ?? "";
@@ -128,7 +135,7 @@ sandboxRoutes.post("/run", async (req, res) => {
     }
   });
 
-  child.stderr.on("data", (data: Buffer) => {
+  child.stderr!.on("data", (data: Buffer) => {
     for (const line of data.toString().split("\n")) {
       if (!line.trim()) continue;
       if (/\b(error|failed|fatal)\b/i.test(line)) emitRunLog(runId, `✗ ${line}\n`);

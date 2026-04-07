@@ -291,9 +291,9 @@ function McpSection() {
   useEffect(() => {
     apiFetch<Record<string, string>>("/api/settings")
       .then((s) => {
-        setFeeds(s.mcp_news_feeds ? JSON.parse(s.mcp_news_feeds) : DEFAULT_FEEDS);
-        setCurrencyTerms(s.mcp_currency_terms ? JSON.parse(s.mcp_currency_terms) : DEFAULT_CURRENCY_TERMS);
-        setDisabledServers(s.mcp_disabled_servers ? JSON.parse(s.mcp_disabled_servers) : []);
+        try { setFeeds(s.mcp_news_feeds ? JSON.parse(s.mcp_news_feeds) : DEFAULT_FEEDS); } catch { setFeeds(DEFAULT_FEEDS); }
+        try { setCurrencyTerms(s.mcp_currency_terms ? JSON.parse(s.mcp_currency_terms) : DEFAULT_CURRENCY_TERMS); } catch { setCurrencyTerms(DEFAULT_CURRENCY_TERMS); }
+        try { setDisabledServers(s.mcp_disabled_servers ? JSON.parse(s.mcp_disabled_servers) : []); } catch { setDisabledServers([]); }
       })
       .finally(() => setLoading(false));
   }, []);

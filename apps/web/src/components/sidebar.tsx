@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useState, useEffect } from "react";
 import { LayoutDashboard, PlusCircle, Plug, Radio, FlaskConical, Users, UsersRound, FileJson, Settings, Handshake, MessageSquare, Rocket } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -32,6 +34,10 @@ const teamsNav: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const logoSrc = mounted && resolvedTheme === "light" ? "/ai_agents_multiplexer_dark.png" : "/ai_agents_multiplexer.png";
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;
@@ -49,7 +55,7 @@ export function Sidebar() {
     <aside className="w-56 border-r border-border bg-background flex flex-col">
       {/* Brand */}
       <div className="flex items-center px-5 py-5 border-b border-border">
-        <Image src="/ai_agents_multiplexer.png" alt="muxAI" width={0} height={0} sizes="100vw" style={{ height: "22px", width: "auto" }} />
+        <Image src={logoSrc} alt="muxAI" width={0} height={0} sizes="100vw" style={{ height: "22px", width: "auto" }} />
       </div>
 
       {/* Nav */}
@@ -119,7 +125,7 @@ export function Sidebar() {
 
         {/* Tools */}
         <div className="space-y-0.5">
-          <p className="px-2 pb-2 text-xs font-semibold text-muted-foreground/60 uppercase tracking-widest">Tools</p>
+          <p className="px-2 pb-2 text-xs font-semibold text-muted-foreground/60 uppercase tracking-widest">Tools & Plugins</p>
           <Link
             href="/sandbox"
             className={cn(

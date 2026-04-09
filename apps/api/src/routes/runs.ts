@@ -31,7 +31,7 @@ runRoutes.get("/:id", async (req, res) => {
   const run = await prisma.heartbeatRun.findUnique({
     where: { id: req.params.id },
     include: {
-      agent: { select: { id: true, name: true, role: true } },
+      agent: { select: { id: true, name: true, role: true, adapterConfig: true } },
     },
   });
   if (!run) {

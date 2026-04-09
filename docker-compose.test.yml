@@ -1,0 +1,15 @@
+volumes:
+  test_volume:
+
+services:
+  db-test:
+    image: postgres:18
+    restart: "no"
+    environment:
+      POSTGRES_DB: muxai_test
+      POSTGRES_USER: muxai_test_user
+      POSTGRES_PASSWORD: muxai_test_password
+    volumes:
+      - test_volume:/var/lib/postgresql
+    ports:
+      - "5434:5432"

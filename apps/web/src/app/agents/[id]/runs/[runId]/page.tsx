@@ -7,6 +7,7 @@ import { RunStatusBadge } from "@/components/run-status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LiveLogs } from "@/components/live-logs";
 import { RunResult } from "@/components/run-result";
+import type { ResultCardConfig } from "@/lib/result-cards";
 
 async function getRun(runId: string): Promise<HeartbeatRun | null> {
   try { return await apiFetch<HeartbeatRun>(`/api/runs/${runId}`); } catch { return null; }
@@ -67,7 +68,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
       </div>
 
       {run.resultJson && (
-        <RunResult resultJson={run.resultJson} />
+        <RunResult resultJson={run.resultJson} cardConfig={(run.agent?.adapterConfig as Record<string, unknown>)?.resultCard as ResultCardConfig | undefined} />
       )}
 
       <Card>

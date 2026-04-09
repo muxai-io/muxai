@@ -1,82 +1,13 @@
 import { Router } from "express";
 import { spawn } from "child_process";
-import { readFileSync } from "fs";
-import path from "path";
 import { prisma } from "../lib/db";
 import { emitRunLog, emitRunDone, emitRunSession, onRunEvent } from "../services/run-events";
 import { INTERNAL_SECRET } from "../services/internal-secret";
+import { CLAUDE_CLI, MUXAI_ROOT, buildMcpConfig } from "../services/claude-spawn";
+import { parseStreamJson } from "../services/stream-parser";
+import { trackProcess, stopProcess, untrackProcess } from "../services/process-manager";
 
 export const chatRoutes = Router();
-
-const CLAUDE_CLI = process.env.CLAUDE_CLI_PATH || "claude";
-const MUXAI_ROOT = path.resolve(process.cwd(), "../..");
-const REGISTRY_PATH = path.join(MUXAI_ROOT, "config/mcp-registry.json");
-
-const active = new Map<string, ReturnType<typeof spawn>>();
-
-async function buildMcpConfig(): Promise<string> {
-  type McpEntry =
-    | { command: string; args: string[] }
-    | { type: "http"; url: string; headers?: Record<string, string> };
-
-  const registry = JSON.parse(readFileSync(REGISTRY_PATH, "utf-8")) as {
-    id: string; type?: string; url?: string; command?: string; args?: string[];
-  }[];
-  // Check for globally disabled built-in servers
-  const disabledSetting = await prisma.setting.findUnique({ where: { key: "mcp_disabled_servers" } });
-  const disabled: string[] = disabledSetting?.value ? JSON.parse(disabledSetting.value) : [];
-  const mcpServers: Record<string, McpEntry> = {};
-  for (const s of registry) {
-    if (disabled.includes(s.id)) continue;
-    if (s.type === "http" && s.url) {
-      mcpServers[s.id] = { type: "http", url: s.url };
-    } else {
-      mcpServers[s.id] = {
-        command: s.command!,
-        args: (s.args ?? []).map((a) => (path.isAbsolute(a) ? a : path.join(MUXAI_ROOT, a))),
-      };
-    }
-  }
-  const custom = await prisma.mcpServer.findMany();
-  for (const s of custom) {
-    const isHttp = s.command.startsWith("http://") || s.command.startsWith("https://");
-    mcpServers[s.name] = isHttp
-      ? { type: "http", url: s.command, ...(s.headers ? { headers: s.headers as Record<string, string> } : {}) }
-      : { command: s.command, args: s.args as string[] };
-  }
-  return JSON.stringify({ mcpServers });
-}
-
-function parseStreamJson(line: string): { text: string | null; sessionId?: string } {
-  try {
-    const obj = JSON.parse(line) as Record<string, unknown>;
-    if (obj.type === "assistant") {
-      const msg = obj.message as { content?: unknown[] } | undefined;
-      const parts: string[] = [];
-      for (const block of msg?.content ?? []) {
-        const b = block as Record<string, unknown>;
-        if (b.type === "text" && typeof b.text === "string" && b.text.trim()) parts.push(b.text.trim());
-        if (b.type === "tool_use") {
-          const input = b.input as Record<string, unknown> | undefined;
-          const hint = input
-            ? Object.entries(input).slice(0, 2).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 50)}`).join(", ")
-            : "";
-          parts.push(`▶ ${b.name}${hint ? `(${hint})` : ""}`);
-        }
-      }
-      return { text: parts.length ? parts.join("\n") : null };
-    }
-    if (obj.type === "result") {
-      const r = obj as { subtype?: string; result?: string; is_error?: boolean; session_id?: string };
-      const sessionId = r.session_id;
-      if (r.is_error || r.subtype === "error") return { text: `✗ ${r.result ?? "unknown error"}`, sessionId };
-      return { text: null, sessionId };
-    }
-    return { text: null };
-  } catch {
-    return { text: line.trim() || null };
-  }
-}
 
 // GET /api/chat/session?agentId=<id>  — get or create session + history
 chatRoutes.get("/session", async (req, res) => {
@@ -200,13 +131,13 @@ chatRoutes.post("/send", async (req, res) => {
 
   let child: ReturnType<typeof spawn>;
   try {
-    child = spawn(CLAUDE_CLI, args, { cwd, env, shell: false });
+    child = spawn(CLAUDE_CLI, args, { cwd, env, shell: false, stdio: ["ignore", "pipe", "pipe"] });
   } catch (err: any) {
     emitRunLog(runId, `Failed to spawn process: ${err.message}\n`);
     emitRunDone(runId, "failed", -1);
     return res.status(500).json({ error: `Failed to start chat process: ${err.message}` });
   }
-  active.set(runId, child);
+  trackProcess(runId, child);
 
   const chunks: string[] = [];
   let stdoutBuffer = "";
@@ -236,21 +167,25 @@ chatRoutes.post("/send", async (req, res) => {
   });
 
   child.on("close", async (code) => {
-    active.delete(runId);
+    untrackProcess(runId);
     const succeeded = code === 0;
     const fullResponse = chunks.join("\n").trim();
 
-    if (fullResponse) {
-      await prisma.chatMessage.create({
-        data: { sessionId: session.id, role: "assistant", content: fullResponse },
-      });
+    try {
+      if (fullResponse) {
+        await prisma.chatMessage.create({
+          data: { sessionId: session.id, role: "assistant", content: fullResponse },
+        });
+      }
+    } catch (dbErr: any) {
+      console.error(`[chat] DB write failed on close: ${dbErr.message}`);
     }
 
     emitRunDone(runId, succeeded ? "succeeded" : "failed", code ?? -1);
   });
 
   child.on("error", (err) => {
-    active.delete(runId);
+    untrackProcess(runId);
     emitRunLog(runId, `✗ ${err.message}\n`);
     emitRunDone(runId, "failed", -1);
   });
@@ -260,11 +195,7 @@ chatRoutes.post("/send", async (req, res) => {
 
 // POST /api/chat/stop/:runId
 chatRoutes.post("/stop/:runId", (req, res) => {
-  const child = active.get(req.params.runId);
-  if (child) {
-    child.kill("SIGTERM");
-    active.delete(req.params.runId);
-  }
+  stopProcess(req.params.runId);
   res.status(204).end();
 });
 

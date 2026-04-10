@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useLogStream, agentColor, formatTime } from "@/components/log-stream-context";
+import { useLogStream, agentColor } from "@/components/log-stream-context";
 import { LogLine } from "@/components/global-log-panel";
-import { API_URL, apiFetch } from "@/lib/utils";
+import { apiFetch } from "@/lib/utils";
 import type { LogEntry } from "@/components/log-stream-context";
 import { Radio, AlignJustify, Columns2 } from "lucide-react";
 

@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { spawn } from "child_process";
-import { prisma } from "../lib/db";
 import { emitRunLog, emitRunDone, emitRunSession, onRunEvent } from "../services/run-events";
 import { CLAUDE_CLI, MUXAI_ROOT, buildMcpConfig } from "../services/claude-spawn";
 import { parseStreamJson } from "../services/stream-parser";

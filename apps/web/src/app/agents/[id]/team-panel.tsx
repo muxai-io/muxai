@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, Bot, ChevronDown, Check, Loader2, StickyNote, ExternalLink, UserMinus } from "lucide-react";
+import { Bot, ChevronDown, Check, Loader2, StickyNote, ExternalLink, UserMinus } from "lucide-react";
 import { apiFetch, cn } from "@/lib/utils";
 import { AgentStatusBadge } from "@/components/agent-status-badge";
 import { Textarea } from "@/components/ui/textarea";

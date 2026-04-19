@@ -42,6 +42,7 @@
               "core-concepts/agents",
               "core-concepts/teams",
               "core-concepts/orchestration",
+              "core-concepts/memory-and-decisions",
               "core-concepts/mcp-servers",
               "core-concepts/contractors",
               "core-concepts/sandbox-and-chat",

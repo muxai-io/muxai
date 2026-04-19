@@ -1,0 +1,124 @@
+---
+title: "Memory & Decisions"
+description: "How an agent remembers chat, prior runs, and past decisions — and how to control what carries over."
+---
+
+## Overview
+
+An agent remembers things in two independent ways. They can be used together or separately.
+
+| Mechanism | What it carries | Cost per run |
+|-----------|------------------|--------------|
+| **Active Memory** | Full conversation transcript (chat + prior runs) | Grows over time |
+| **Review Previous Decisions** | Structured summary of the last ~5 decision cards | Low — one tool call |
+
+## Active Memory
+
+Active Memory is a per-agent toggle (off by default) that makes chat and scheduled runs share the **same Claude session** via `--resume`.
+
+### When off (default)
+
+Every run is a clean slate. The agent only sees:
+
+- System prompt / SKILL.md
+- Default prompt for this run
+- Team roster (for leads)
+- MCP tools it can call
+
+No chat history and no prior run outputs carry into context. The agent has no recollection of previous work beyond what you pass in the prompt.
+
+### When on
+
+Everything above **plus the shared Claude session**, which accumulates:
+
+- Every chat message with this agent
+- Every scheduled run's transcript (prompts, tool calls, replies)
+- Accumulates until you click **Reset**
+
+### How the shared session flows
+
+```
+[chat]      user sends a message
+              ↓ Claude runs with --resume <sessionId>
+              ↓ writes new sessionId back to ChatSession
+
+[heartbeat] scheduled or manual run fires
+              ↓ reads ChatSession.claudeSessionId
+              ↓ spawns with --resume <sessionId> + defaultPrompt
+              ↓ Claude sees: skill + full history + new prompt
+              ↓ writes new sessionId back to ChatSession
+
+[chat]      next message picks up where the run left off
+```
+
+Under the hood, there's one `ChatSession` row per agent. Both chat and heartbeat read `claudeSessionId` from it, and both write the latest session id back after their run completes. Disabling the toggle leaves the data in place but stops using it.
+
+<Tip>
+Enabling memory on an agent is treated as a fresh start — same semantics as clicking Reset. Re-enabling after a disable also starts fresh, so stale context doesn't resurface unexpectedly.
+</Tip>
+
+### What memory *can't* do
+
+Memory preserves **context**, not **control**. If you tell the agent in chat _"next run just say hi"_, the agent remembers — but when the heartbeat fires, it receives its normal scheduled prompt (e.g. _"analyze BTC"_) and follows that. Most recent explicit instructions win. If you need to steer the next run specifically, change the default prompt or invoke manually with an override.
+
+## Review Previous Decisions
+
+Independent of Active Memory. When the **Review Previous Decisions** toggle is on, the agent calls `mcp__orchestrator__get_my_decisions` at the start of each run. This fetches the last ~5 structured result cards — the agent's own prior outputs — **without** carrying full transcripts.
+
+Use this when:
+
+- You want the agent to be aware of what it decided recently, but
+- You don't want the context cost of full transcripts to grow over time, and
+- The signal you care about is the _decision_, not the _reasoning that got there_.
+
+The agent sees clean entries like `2d ago · WAIT · range unresolved` rather than re-reading its own conversations.
+
+## Quick reference
+
+| | Memory off | Memory on | Review Decisions |
+|---|---|---|---|
+| Chat history | – | ✓ full | – |
+| Prior run transcripts | – | ✓ full | – |
+| Prior decision cards | – | ✓ (inside transcript) | ✓ last ~5, structured |
+| Context cost per run | low | grows over time | low (one tool call) |
+
+The two can be combined. Memory on + Review Decisions on gives the agent both the full reasoning history _and_ a clean decision summary on demand.
+
+## The Active Memory panel
+
+On the agent detail page, when Memory is enabled you see:
+
+- **Status** — "Fresh" before the first run writes a session id, "Carrying context" after
+- **Runs since reset** — how many scheduled runs have fired since the last Reset (or since enabling)
+- **Session age** — how long ago the session was last updated (e.g. `2h 15m`)
+
+When **Runs since reset** passes 20, the pill turns amber on `/agents` cards and a warning appears on the detail panel suggesting a reset to keep runs fast.
+
+## Managing memory
+
+<Steps>
+  <Step title="Enable for an agent">
+    On **New Agent** or **Edit Agent**, toggle **Active Memory** on. The toggle is off by default with an amber warning explaining the tradeoff (context grows over time).
+  </Step>
+  <Step title="Let it accumulate">
+    Chat with the agent or let scheduled runs fire. Each one extends the shared session.
+  </Step>
+  <Step title="Reset when drift starts">
+    Click **Reset memory** from either the agent detail page or the card on `/agents`. This clears the stored `claudeSessionId` and bumps the counter anchor — the next run starts fresh while chat messages remain visible.
+  </Step>
+</Steps>
+
+<Tip>
+Enabling memory and resetting memory have the same effect: fresh session, counter back to zero. Disabling memory leaves the stored session untouched but ignores it; re-enabling starts fresh.
+</Tip>
+
+## Where the data lives
+
+| Table / column | Role |
+|----------------|------|
+| `ChatSession.claudeSessionId` | The latest Claude CLI session id. Shared between chat and heartbeat when memory is on. |
+| `ChatSession.lastResetAt` | Anchor for the runs-since-reset counter. Bumped on enable and on explicit reset. |
+| `HeartbeatRun.sessionIdBefore` | Session id the run was spawned with (for audit). |
+| `HeartbeatRun.sessionIdAfter` | Session id Claude emitted on completion. Used to count "successful runs since reset". |
+| `Agent.adapterConfig.memoryEnabled` | Per-agent toggle. Off by default. |
+| `Agent.adapterConfig.reviewDecisions` | Independent per-agent toggle for structured decision fetch. |

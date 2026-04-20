@@ -4,6 +4,7 @@ import cors from "cors";
 import { startDatabase } from "./services/database";
 import { prisma } from "./lib/db";
 import { agentRoutes } from "./routes/agents";
+import { controlTowerRoutes } from "./routes/control-tower";
 import { runRoutes } from "./routes/runs";
 import { mcpServerRoutes } from "./routes/mcp-servers";
 import { sandboxRoutes } from "./routes/sandbox";
@@ -56,6 +57,7 @@ app.use(express.json());
 app.use(apiKeyAuth);
 
 app.use("/api/agents", agentRoutes);
+app.use("/api/control-tower", controlTowerRoutes);
 app.use("/api/runs", runRoutes);
 app.use("/api/mcp-servers", mcpServerRoutes);
 app.use("/api/sandbox", sandboxRoutes);

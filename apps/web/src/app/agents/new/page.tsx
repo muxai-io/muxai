@@ -511,7 +511,9 @@ export default function NewAgentPage() {
                   <Label>MCP Tool Access</Label>
                   <p className="text-xs text-muted-foreground">Toggle MCP servers or individual tools. Disabled items are added to the disallowed list.</p>
                   <div className="space-y-1 max-h-64 overflow-y-auto rounded-md border p-2">
-                    {builtInServers.map((server) => {
+                    {builtInServers
+                      .filter((s) => s.id !== "control-tower")
+                      .map((server) => {
                       const serverToolNames = server.tools.map((t) => t.fullName);
                       const allDisabled = serverToolNames.length > 0 && serverToolNames.every((t) => disabledMcpTools.has(t));
                       const someDisabled = serverToolNames.some((t) => disabledMcpTools.has(t));

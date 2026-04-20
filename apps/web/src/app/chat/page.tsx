@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { API_URL, API_KEY, apiFetch } from "@/lib/utils";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { API_URL, API_KEY, apiFetch, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Play, Square, RotateCcw, Cpu } from "lucide-react";
+import { MessageSquare, Play, Square, RotateCcw, Cpu, Radar } from "lucide-react";
 
 interface Agent {
   id: string;
@@ -60,8 +61,24 @@ function AssistantContent({ content }: { content: string }) {
 }
 
 export default function ChatPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChatPageInner />
+    </Suspense>
+  );
+}
+
+function ChatPageInner() {
+  const searchParams = useSearchParams();
+  const agentParam = searchParams.get("agent");
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("general");
+  const [controlTowerId, setControlTowerId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string>(agentParam ?? "general");
+
+  useEffect(() => {
+    if (agentParam && agentParam !== selectedId) setSelectedId(agentParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentParam]);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamLines, setStreamLines] = useState<StreamLine[]>([]);
@@ -73,7 +90,17 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    apiFetch<Agent[]>("/api/agents").then(setAgents).catch(() => {});
+    Promise.all([
+      apiFetch<Agent[]>("/api/agents").catch(() => [] as Agent[]),
+      apiFetch<{ agent: Agent | null }>("/api/control-tower").catch(() => ({ agent: null })),
+    ]).then(([regular, { agent: tower }]) => {
+      if (tower) {
+        setAgents([tower, ...regular]);
+        setControlTowerId(tower.id);
+      } else {
+        setAgents(regular);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -191,19 +218,29 @@ export default function ChatPage() {
 
   const selectedAgent = agents.find((a) => a.id === selectedId);
   const hasContent = messages.length > 0 || streamLines.length > 0;
+  const isControlTower = controlTowerId !== null && selectedId === controlTowerId;
 
   return (
     <div className="flex flex-col h-full gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
-            <MessageSquare className="h-4 w-4" />
+          <div
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+              isControlTower
+                ? "bg-red-500/10 text-red-400 ring-1 ring-red-500/30 shadow-[0_0_18px_rgba(239,68,68,0.35)]"
+                : "bg-emerald-500/10 text-emerald-400",
+            )}
+          >
+            {isControlTower ? <Radar className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
           </div>
           <div>
             <h1 className="text-xl font-semibold leading-none">Chat</h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {selectedId === "general"
+              {isControlTower
+                ? "Talking to Control Tower · admin"
+                : selectedId === "general"
                 ? "General — persistent memory"
                 : `Talking to ${selectedAgent?.name ?? "…"}`}
             </p>
@@ -222,13 +259,27 @@ export default function ChatPage() {
             </button>
           )}
           <Select value={selectedId} onValueChange={setSelectedId}>
-            <SelectTrigger className="h-8 w-48 text-sm">
+            <SelectTrigger
+              className={cn(
+                "h-8 w-48 text-sm",
+                isControlTower && "border-red-500/40 text-red-400",
+              )}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="general">General</SelectItem>
               {agents.map((a) => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                <SelectItem key={a.id} value={a.id}>
+                  {a.id === controlTowerId ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+                      {a.name}
+                    </span>
+                  ) : (
+                    a.name
+                  )}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -242,7 +293,14 @@ export default function ChatPage() {
       </div>
 
       {/* Chat thread */}
-      <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-border bg-card overflow-hidden">
+      <div
+        className={cn(
+          "flex-1 min-h-0 flex flex-col rounded-xl border bg-card overflow-hidden transition-shadow",
+          isControlTower
+            ? "border-red-500/40 shadow-[0_0_32px_rgba(239,68,68,0.18)]"
+            : "border-border",
+        )}
+      >
         {!hasContent && !running ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-muted-foreground/40">
             <MessageSquare className="h-8 w-8 mb-3" />

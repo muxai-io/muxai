@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MODELS, DEFAULT_MODEL } from "@/lib/models";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Settings2 } from "lucide-react";
+import { Settings2, Lock } from "lucide-react";
 
 interface McpTool { name: string; fullName: string; description: string; }
 interface McpServer { id: string; label: string; description: string; command: string; args: string[]; tools: McpTool[]; }
@@ -76,6 +76,7 @@ export default function EditAgentPage() {
   const [reviewDecisions, setReviewDecisions] = useState(false);
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [disabledMcpTools, setDisabledMcpTools] = useState<Set<string>>(new Set());
+  const [isControlTower, setIsControlTower] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -156,6 +157,7 @@ export default function EditAgentPage() {
         setSchedulePreset(resolveSchedulePreset(existingCron));
         setMcpPreset(resolveMcpPreset(config.cwd as string | undefined, mcpRootPath));
         setReportsToId(agent.reportsToId ?? "none");
+        setIsControlTower(agent.role === "control_tower");
         setUseChrome(Boolean(config.useChrome));
         setPersistLogs(Boolean(config.persistLogs));
         setReviewDecisions(Boolean(config.reviewDecisions));
@@ -251,37 +253,53 @@ export default function EditAgentPage() {
             <CardContent className="space-y-4 pt-4">
               <div className="space-y-1.5">
                 <Label htmlFor="name">Name *</Label>
-                <Input id="name" required value={form.name} onChange={(e) => set("name", e.target.value)} />
+                <Input
+                  id="name"
+                  required
+                  value={form.name}
+                  onChange={(e) => set("name", e.target.value)}
+                  readOnly={isControlTower}
+                  className={isControlTower ? "opacity-60 cursor-not-allowed" : ""}
+                />
+                {isControlTower && (
+                  <p className="text-xs text-muted-foreground">The Control Tower's name is fixed.</p>
+                )}
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="role">Role</Label>
-                <Select value={form.role} onValueChange={(v) => set("role", v)}>
-                  <SelectTrigger id="role"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {roles.map((r) => <SelectItem key={r.id} value={r.name} className="capitalize">{r.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="title">Title <span className="text-muted-foreground">(optional)</span></Label>
-                <Input id="title" value={form.title} onChange={(e) => set("title", e.target.value)} />
-              </div>
+              {!isControlTower && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="role">Role</Label>
+                  <Select value={form.role} onValueChange={(v) => set("role", v)}>
+                    <SelectTrigger id="role"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {roles.map((r) => <SelectItem key={r.id} value={r.name} className="capitalize">{r.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {!isControlTower && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="title">Title <span className="text-muted-foreground">(optional)</span></Label>
+                  <Input id="title" value={form.title} onChange={(e) => set("title", e.target.value)} />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="capabilities">Capabilities <span className="text-muted-foreground">(optional)</span></Label>
                 <Textarea id="capabilities" value={form.capabilities} onChange={(e) => set("capabilities", e.target.value)} rows={3} />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="reportsTo">Reports To <span className="text-muted-foreground">(optional)</span></Label>
-                <Select value={reportsToId} onValueChange={setReportsToId}>
-                  <SelectTrigger id="reportsTo"><SelectValue placeholder="None (top-level)" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None (top-level)</SelectItem>
-                    {agents.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name} <span className="text-muted-foreground capitalize">({a.role})</span></SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!isControlTower && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="reportsTo">Reports To <span className="text-muted-foreground">(optional)</span></Label>
+                  <Select value={reportsToId} onValueChange={setReportsToId}>
+                    <SelectTrigger id="reportsTo"><SelectValue placeholder="None (top-level)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (top-level)</SelectItem>
+                      {agents.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{a.name} <span className="text-muted-foreground capitalize">({a.role})</span></SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -378,21 +396,23 @@ export default function EditAgentPage() {
           <Card>
             <StepHeader step={3} title="MCP & Workspace" description="Tools and environment" />
             <CardContent className="space-y-4 pt-4">
-              <div className="space-y-1.5">
-                <Label>MCP Servers</Label>
-                <Select value={mcpPreset} onValueChange={handleMcpPreset}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="global">Global (~/.claude config)</SelectItem>
-                    <SelectItem value="builtin">Built-in (muxai-io servers)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {mcpPreset === "builtin" && (
-                  <p className="text-xs text-muted-foreground">
-                    Agent gets access to all built-in MCP servers. See the <a href="/mcp-servers" className="underline">MCP Servers</a> page for what's available.
-                  </p>
-                )}
-              </div>
+              {!isControlTower && (
+                <div className="space-y-1.5">
+                  <Label>MCP Servers</Label>
+                  <Select value={mcpPreset} onValueChange={handleMcpPreset}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">Global (~/.claude config)</SelectItem>
+                      <SelectItem value="builtin">Built-in (muxai-io servers)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {mcpPreset === "builtin" && (
+                    <p className="text-xs text-muted-foreground">
+                      Agent gets access to all built-in MCP servers. See the <a href="/mcp-servers" className="underline">MCP Servers</a> page for what's available.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="cwd">Workspace Directory <span className="text-muted-foreground">(optional)</span></Label>
                 <Input
@@ -426,12 +446,19 @@ export default function EditAgentPage() {
                   <Label>MCP Tool Access</Label>
                   <p className="text-xs text-muted-foreground">Toggle MCP servers or individual tools. Disabled items are added to the disallowed list.</p>
                   <div className="space-y-1 max-h-64 overflow-y-auto rounded-md border p-2">
-                    {builtInServers.map((server) => {
+                    {builtInServers
+                      .filter((s) => {
+                        if (isControlTower) return s.id !== "wallet" && s.id !== "orchestrator";
+                        return s.id !== "control-tower";
+                      })
+                      .map((server) => {
+                      const isLockedServer = isControlTower && server.id === "control-tower";
                       const serverToolNames = server.tools.map((t) => t.fullName);
                       const allDisabled = serverToolNames.length > 0 && serverToolNames.every((t) => disabledMcpTools.has(t));
                       const someDisabled = serverToolNames.some((t) => disabledMcpTools.has(t));
 
                       function toggleServer() {
+                        if (isLockedServer) return;
                         setDisabledMcpTools((prev) => {
                           const next = new Set(prev);
                           if (allDisabled) {
@@ -444,6 +471,7 @@ export default function EditAgentPage() {
                       }
 
                       function toggleTool(fullName: string) {
+                        if (isControlTower && fullName.startsWith("mcp__control-tower__")) return;
                         setDisabledMcpTools((prev) => {
                           const next = new Set(prev);
                           if (next.has(fullName)) {
@@ -460,28 +488,34 @@ export default function EditAgentPage() {
                           <button
                             type="button"
                             onClick={toggleServer}
-                            className="flex items-center gap-2 w-full text-left py-1 px-1 rounded hover:bg-muted text-sm font-medium"
+                            disabled={isLockedServer}
+                            title={isLockedServer ? "The Control Tower cannot disable its own admin tools." : undefined}
+                            className={`flex items-center gap-2 w-full text-left py-1 px-1 rounded text-sm font-medium ${isLockedServer ? "cursor-not-allowed opacity-80" : "hover:bg-muted"}`}
                           >
                             <span className={`h-3 w-3 rounded-sm border flex items-center justify-center ${allDisabled ? "bg-destructive border-destructive" : someDisabled ? "bg-yellow-500/50 border-yellow-500" : "bg-primary border-primary"}`}>
                               {allDisabled ? <span className="text-[9px] text-destructive-foreground">&#x2715;</span> : <span className="text-[9px] text-primary-foreground">&#x2713;</span>}
                             </span>
                             {server.label}
+                            {isLockedServer && <Lock className="h-3 w-3 text-muted-foreground ml-1" />}
                           </button>
                           <div className="ml-5 space-y-0.5">
                             {server.tools.map((tool) => {
                               const isDisabled = disabledMcpTools.has(tool.fullName);
+                              const isLockedTool = isControlTower && tool.fullName.startsWith("mcp__control-tower__");
                               return (
                                 <button
                                   key={tool.fullName}
                                   type="button"
                                   onClick={() => toggleTool(tool.fullName)}
-                                  title={tool.description}
-                                  className="flex items-center gap-2 w-full text-left py-0.5 px-1 rounded hover:bg-muted"
+                                  disabled={isLockedTool}
+                                  title={isLockedTool ? "Required for Control Tower — cannot be disabled." : tool.description}
+                                  className={`flex items-center gap-2 w-full text-left py-0.5 px-1 rounded ${isLockedTool ? "cursor-not-allowed opacity-80" : "hover:bg-muted"}`}
                                 >
                                   <span className={`h-2.5 w-2.5 rounded-sm border flex items-center justify-center ${isDisabled ? "bg-destructive border-destructive" : "bg-primary border-primary"}`}>
                                     {isDisabled ? <span className="text-[8px] text-destructive-foreground">&#x2715;</span> : <span className="text-[8px] text-primary-foreground">&#x2713;</span>}
                                   </span>
                                   <span className="text-xs text-muted-foreground font-mono">{tool.name}</span>
+                                  {isLockedTool && <Lock className="h-2.5 w-2.5 text-muted-foreground ml-auto" />}
                                 </button>
                               );
                             })}

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
-import { LayoutDashboard, PlusCircle, Plug, Radio, FlaskConical, Users, UsersRound, FileJson, Settings, Handshake, MessageSquare, Rocket } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Plug, Radio, FlaskConical, Users, UsersRound, FileJson, Settings, Handshake, MessageSquare, Rocket, Radar } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ interface NavItem {
 
 const platformNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/control-tower", label: "Control Tower", icon: Radar },
   { href: "/mcp-servers", label: "MCP Servers", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

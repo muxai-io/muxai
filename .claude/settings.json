@@ -31,6 +31,10 @@
     "docs": {
       "command": "node",
       "args": ["packages/mcp-docs/index.js"]
+    },
+    "control-tower": {
+      "command": "node",
+      "args": ["packages/mcp-control-tower/index.js"]
     }
   }
 }

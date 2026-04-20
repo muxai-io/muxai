@@ -1,0 +1,47 @@
+---
+title: "Control Tower"
+description: "The singleton admin agent that sits above your team. One per muxAI deployment, with full visibility across every agent."
+---
+
+## What is the Control Tower?
+
+The Control Tower is a special agent that acts as the single conversational entry point to your muxAI deployment. You talk to it in chat — it can list every agent, invoke runs, and report results back to you. Think of it as the admin layer between you and the rest of your agents.
+
+There is **one Control Tower per deployment**. It's a singleton, identified by the reserved `role = "control_tower"`. You can't create it from the regular **New Agent** page — the `/agents` API rejects that role — and it's hidden from the agent list, team reports-to pickers, and memory summaries.
+
+## Setting it up
+
+Visit `/control-tower` in the sidebar (Platform section, Radar icon). If no Control Tower exists yet, you'll see an empty state with a **Set up** button. One click creates it with default settings and its own Solana + Base/EVM wallets.
+
+Once set up, the page shows an admin card with an **Open chat** button that preselects the Control Tower in `/chat`.
+
+## MCP access
+
+The Control Tower gets **every built-in MCP server except two**:
+
+| Server | Included? | Why |
+|--------|-----------|-----|
+| `mcp-control-tower` | ✅ | Its own admin tools — list agents, invoke runs, read run status. |
+| All other built-ins | ✅ | Wide access makes chat useful: research, trade data, memory, etc. |
+| `mcp-wallet` | ❌ | The only MCP that can spend funds via x402. Admin's asymmetric risk — excluded by default. |
+| `mcp-orchestrator` | ❌ | The Control Tower has no direct reports, so team coordination tools don't apply. |
+
+The exclusion lives in `apps/api/src/services/adapters/claude-local.ts` and is enforced on every run.
+
+## Admin tools
+
+`packages/mcp-control-tower` exposes three tools that only the Control Tower can call:
+
+| Tool | Purpose |
+|------|---------|
+| `list_agents` | Enumerate every agent (excluding itself), with id, role, status, run count, and schedule. |
+| `invoke_agent` | Invoke an agent by name, role, or id and wait for the run to complete. Optional `task` overrides the default prompt. |
+| `get_run_status` | Fetch status, result, and logs for any run by id. |
+
+Regular agents never see these tools — `claude-local.ts` excludes `mcp-control-tower` from every non-admin spawn.
+
+## Chatting with it
+
+The `/chat` page fetches the Control Tower separately from the regular agent list and merges it into the agent dropdown. When selected, it's marked with a red ring, a Radar icon, and a red dot. The `?agent=<id>` query param on `/chat` preselects it — the **Open chat** button on `/control-tower` uses this.
+
+Because chat doesn't create `HeartbeatRun` records, the Control Tower card shows **Messages** (count of `ChatMessage` rows on its session) instead of **Total runs**.

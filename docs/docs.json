@@ -41,6 +41,7 @@
             "pages": [
               "core-concepts/agents",
               "core-concepts/teams",
+              "core-concepts/control-tower",
               "core-concepts/orchestration",
               "core-concepts/memory-and-decisions",
               "core-concepts/mcp-servers",

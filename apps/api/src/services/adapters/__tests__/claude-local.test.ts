@@ -115,12 +115,12 @@ describe("claudeLocalAdapter", () => {
       const config = await claudeLocalAdapter.buildSpawnConfig(makeAgent(), {});
       expect(config.args).toContain("--mcp-config");
       expect(config.args).toContain("--strict-mcp-config");
-      expect(mockBuildMcpConfig).toHaveBeenCalledWith(["orchestrator"]);
+      expect(mockBuildMcpConfig).toHaveBeenCalledWith(["orchestrator", "control-tower"]);
     });
 
     it("excludes orchestrator from MCP for agents without reports", async () => {
       await claudeLocalAdapter.buildSpawnConfig(makeAgent(), {});
-      expect(mockBuildMcpConfig).toHaveBeenCalledWith(["orchestrator"]);
+      expect(mockBuildMcpConfig).toHaveBeenCalledWith(["orchestrator", "control-tower"]);
     });
 
     it("includes orchestrator in MCP for agents with reports", async () => {
@@ -130,7 +130,27 @@ describe("claudeLocalAdapter", () => {
         ],
       });
       await claudeLocalAdapter.buildSpawnConfig(agent, {});
-      expect(mockBuildMcpConfig).toHaveBeenCalledWith([]);
+      expect(mockBuildMcpConfig).toHaveBeenCalledWith(["control-tower"]);
+    });
+
+    it("excludes control-tower for non-admin agents", async () => {
+      await claudeLocalAdapter.buildSpawnConfig(makeAgent(), {});
+      const callArg = mockBuildMcpConfig.mock.calls[0][0];
+      expect(callArg).toContain("control-tower");
+    });
+
+    it("excludes wallet for Control Tower agent", async () => {
+      const agent = makeAgent({ role: "control_tower" });
+      await claudeLocalAdapter.buildSpawnConfig(agent, {});
+      const callArg = mockBuildMcpConfig.mock.calls[0][0];
+      expect(callArg).toContain("wallet");
+      expect(callArg).not.toContain("control-tower");
+    });
+
+    it("excludes orchestrator and wallet for Control Tower without reports", async () => {
+      const agent = makeAgent({ role: "control_tower" });
+      await claudeLocalAdapter.buildSpawnConfig(agent, {});
+      expect(mockBuildMcpConfig).toHaveBeenCalledWith(["orchestrator", "wallet"]);
     });
 
     it("skips MCP config for non-builtin cwd", async () => {

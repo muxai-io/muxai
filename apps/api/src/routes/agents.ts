@@ -90,6 +90,7 @@ const UpdateAgentSchema = CreateAgentSchema.partial().extend({
 // GET /api/agents
 agentRoutes.get("/", async (_req, res) => {
   const agents = await prisma.agent.findMany({
+    where: { role: { not: "control_tower" } },
     orderBy: { createdAt: "desc" },
     include: {
       reportsTo: { select: { id: true, name: true, role: true } },
@@ -105,6 +106,10 @@ agentRoutes.post("/", async (req, res) => {
   const parsed = CreateAgentSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  if (parsed.data.role === "control_tower") {
+    res.status(400).json({ error: "Role 'control_tower' is reserved — use POST /api/control-tower to set up the admin agent." });
     return;
   }
   const [wallet, evmWallet] = await Promise.all([generateWallet(), generateEvmWallet()]);
@@ -175,7 +180,7 @@ agentRoutes.get("/decisions", async (req, res) => {
 // GET /api/agents/memory-summary — batched memory status for all agents
 agentRoutes.get("/memory-summary", async (_req, res) => {
   const [agents, chatSessions] = await Promise.all([
-    prisma.agent.findMany({ select: { id: true, adapterConfig: true } }),
+    prisma.agent.findMany({ where: { role: { not: "control_tower" } }, select: { id: true, adapterConfig: true } }),
     prisma.chatSession.findMany({ select: { agentId: true, claudeSessionId: true, updatedAt: true, lastResetAt: true } }),
   ]);
   const sessionByAgent = new Map(chatSessions.map((s) => [s.agentId, s]));
@@ -239,9 +244,19 @@ agentRoutes.patch("/:id", async (req, res) => {
   // recursion is enough for the shapes we store (resultCard, schedule, etc.);
   // arrays and primitives are replaced wholesale.
   const data = { ...parsed.data };
+  const existing = await prisma.agent.findUnique({ where: { id: req.params.id }, select: { role: true, adapterConfig: true } });
+  const isControlTower = existing?.role === "control_tower";
+
+  // Guardrail: lock identity fields on the Control Tower.
+  if (isControlTower) {
+    delete data.name;
+    delete data.role;
+    delete data.title;
+    delete data.reportsToId;
+  }
+
   let memoryTurnedOn = false;
   if (data.adapterConfig) {
-    const existing = await prisma.agent.findUnique({ where: { id: req.params.id }, select: { adapterConfig: true } });
     const existingConfig = (existing?.adapterConfig ?? {}) as Record<string, unknown>;
     const incoming = data.adapterConfig as Record<string, unknown>;
     memoryTurnedOn = !existingConfig.memoryEnabled && incoming.memoryEnabled === true;
@@ -253,6 +268,14 @@ agentRoutes.patch("/:id", async (req, res) => {
       } else {
         merged[k] = v;
       }
+    }
+    // Guardrail: the Control Tower cannot disable its own admin tools.
+    if (isControlTower && typeof merged.disallowedTools === "string") {
+      const kept = merged.disallowedTools
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s && !s.startsWith("mcp__control-tower__"));
+      merged.disallowedTools = kept.join(",");
     }
     data.adapterConfig = merged;
   }

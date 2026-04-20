@@ -148,6 +148,30 @@
     ]
   },
   {
+    "id": "control-tower",
+    "label": "Control Tower",
+    "description": "Admin tools for the Control Tower agent. Lists agents, invokes runs, and inspects run results across the entire muxAI deployment. Excluded from every other agent.",
+    "command": "node",
+    "args": ["packages/mcp-control-tower/index.js"],
+    "tools": [
+      {
+        "name": "list_agents",
+        "fullName": "mcp__control-tower__list_agents",
+        "description": "List every agent in this muxAI deployment (excluding the Control Tower itself)."
+      },
+      {
+        "name": "invoke_agent",
+        "fullName": "mcp__control-tower__invoke_agent",
+        "description": "Invoke a specific agent by name, role, or id and wait for the run to complete."
+      },
+      {
+        "name": "get_run_status",
+        "fullName": "mcp__control-tower__get_run_status",
+        "description": "Fetch the status, result, and logs of a single run by id."
+      }
+    ]
+  },
+  {
     "id": "docs",
     "label": "Docs",
     "description": "Search and read muxai platform documentation. Agents can look up trade decision formats, orchestration behavior, SKILL.md conventions, and more.",

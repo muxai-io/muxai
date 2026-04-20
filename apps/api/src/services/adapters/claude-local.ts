@@ -64,8 +64,13 @@ Before producing a new result, call \`mcp__orchestrator__get_my_decisions\` to r
 
     const defaultPrompt = (config.defaultPrompt as string) || buildDefaultPrompt(agent);
 
-    // MCP config — exclude orchestrator for agents without reports
-    const mcpExclude = agent.reports.length > 0 ? [] : ["orchestrator"];
+    // MCP config — exclude orchestrator for agents without reports, control-tower for non-admin.
+    // Control Tower also skips `wallet` by default: it's the only MCP that can spend funds.
+    const isControlTower = agent.role === "control_tower";
+    const mcpExclude = [
+      ...(agent.reports.length > 0 ? [] : ["orchestrator"]),
+      ...(isControlTower ? ["wallet"] : ["control-tower"]),
+    ];
     let mcpConfigJson: string | null = null;
     if (isBuiltin) {
       mcpConfigJson = await buildMcpConfig(mcpExclude);

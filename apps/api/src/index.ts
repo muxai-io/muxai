@@ -14,6 +14,7 @@ import { chatRoutes } from "./routes/chat";
 import { settingsRoutes } from "./routes/settings";
 import { teamRoutes } from "./routes/teams";
 import { schedulerRoutes } from "./routes/schedulers";
+import { candleRoutes } from "./routes/candles";
 import { initScheduler } from "./services/scheduler";
 import { initTelegramGatewayOnBoot } from "./services/gateways/telegram";
 import { initTradeResolver } from "./services/trade-resolver-tick";
@@ -70,6 +71,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/api/schedulers", schedulerRoutes);
+app.use("/api/candles", candleRoutes);
 
 // GET /api/logs/stream — global SSE stream for all agent activity
 app.get("/api/logs/stream", (req, res) => {

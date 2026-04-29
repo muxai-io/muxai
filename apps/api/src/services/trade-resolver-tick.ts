@@ -73,6 +73,29 @@ interface OpenTrade {
   expireBars: number;
   fillTolerancePct: number;
   resolutionStatus: string | null;
+  resolutionMeta: Record<string, unknown> | null;
+  manualEntry?: { at: number; fill: number };
+  manualExit?: { at: number; price: number };
+}
+
+function readManualEntry(meta: Record<string, unknown> | null): { at: number; fill: number } | undefined {
+  const m = meta?.manualEntry;
+  if (!m || typeof m !== "object") return undefined;
+  const obj = m as Record<string, unknown>;
+  const at = typeof obj.at === "number" ? obj.at : null;
+  const fill = typeof obj.fill === "number" ? obj.fill : null;
+  if (at === null || fill === null) return undefined;
+  return { at, fill };
+}
+
+function readManualExit(meta: Record<string, unknown> | null): { at: number; price: number } | undefined {
+  const m = meta?.manualExit;
+  if (!m || typeof m !== "object") return undefined;
+  const obj = m as Record<string, unknown>;
+  const at = typeof obj.at === "number" ? obj.at : null;
+  const price = typeof obj.price === "number" ? obj.price : null;
+  if (at === null || price === null) return undefined;
+  return { at, price };
 }
 
 async function findOpenTrades(): Promise<OpenTrade[]> {
@@ -91,6 +114,7 @@ async function findOpenTrades(): Promise<OpenTrade[]> {
       finishedAt: true,
       resultJson: true,
       resolutionStatus: true,
+      resolutionMeta: true,
       agent: { select: { adapterConfig: true } },
     },
     orderBy: { finishedAt: "desc" },
@@ -122,6 +146,7 @@ async function findOpenTrades(): Promise<OpenTrade[]> {
     const timeframe = (result[getMappedField(mapping, "timeframe")] as string | undefined) ?? "4h";
     if (!asset || typeof asset !== "string") continue;
 
+    const meta = (r.resolutionMeta ?? null) as Record<string, unknown> | null;
     out.push({
       runId: r.id,
       agentId: r.agentId,
@@ -136,6 +161,9 @@ async function findOpenTrades(): Promise<OpenTrade[]> {
       expireBars: auto?.expireBars || DEFAULT_EXPIRE_BARS,
       fillTolerancePct: typeof auto?.fillTolerancePct === "number" ? auto.fillTolerancePct : DEFAULT_TOLERANCE,
       resolutionStatus: r.resolutionStatus,
+      resolutionMeta: meta,
+      manualEntry: readManualEntry(meta),
+      manualExit: readManualExit(meta),
     });
   }
   return out;
@@ -211,18 +239,25 @@ async function tickOnce(): Promise<void> {
           expireBars: trade.expireBars,
           fillTolerancePct: trade.fillTolerancePct,
           candles: tradeCandles,
+          manualEntry: trade.manualEntry,
+          manualExit: trade.manualExit,
         });
 
         const isFinal = result.status === "resolved" || result.status === "expired";
         if (isFinal) resolvedCount++;
         else if (result.status === "active") activeCount++;
 
+        // Preserve manual overrides across writes — `result.meta` doesn't include them.
+        const nextMeta: Record<string, unknown> = { ...(result.meta as Record<string, unknown>) };
+        if (trade.manualEntry) nextMeta.manualEntry = trade.manualEntry;
+        if (trade.manualExit) nextMeta.manualExit = trade.manualExit;
+
         await prisma.heartbeatRun.update({
           where: { id: trade.runId },
           data: {
             resolutionStatus: result.status,
             resolutionCheckedAt: new Date(),
-            resolutionMeta: result.meta as object,
+            resolutionMeta: nextMeta as object,
             ...(isFinal
               ? {
                   outcome: result.outcome,

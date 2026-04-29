@@ -1,5 +1,9 @@
 // Pure resolver — given a trade decision and a series of candles, decide whether
 // the trade entered, hit TP, hit SL, or expired. No I/O, no DB. Deterministic.
+//
+// Manual overrides: `manualEntry` skips fill detection (user actually traded on
+// the exchange and may have got a different fill); `manualExit` terminates the
+// trade at a user-supplied price (e.g. cut early, or slippage on exit).
 
 export type TradeSide = "LONG" | "SHORT";
 
@@ -12,6 +16,9 @@ export interface Candle {
   closeTime: number; // ms epoch — bar close
 }
 
+export interface ManualEntry { at: number; fill: number }
+export interface ManualExit { at: number; price: number }
+
 export interface ResolveInput {
   side: TradeSide;
   entry: number;
@@ -21,6 +28,8 @@ export interface ResolveInput {
   expireBars: number;       // close as expired/NA after this many bars from decisionAt
   fillTolerancePct: number; // entry "hit" if price came within this % of entry
   candles: Candle[];        // candles AFTER decisionAt, oldest → newest
+  manualEntry?: ManualEntry;
+  manualExit?: ManualExit;
 }
 
 export type ResolveStatus = "pending" | "active" | "resolved" | "expired";
@@ -40,7 +49,7 @@ export interface ResolveResult {
     enteredAt?: number;
     hitAt?: number;
     barsConsidered: number;
-    reason?: "tp_hit" | "sl_hit" | "same_bar_collision" | "no_fill_expired" | "no_resolution_expired";
+    reason?: "tp_hit" | "sl_hit" | "same_bar_collision" | "no_fill_expired" | "no_resolution_expired" | "manual_exit";
   };
 }
 
@@ -50,71 +59,71 @@ export interface ResolveResult {
  * (we have no intra-bar data to know which came first).
  */
 export function resolveTradeFromCandles(input: ResolveInput): ResolveResult {
-  const { side, entry, takeProfit, stopLoss, decisionAt, expireBars, fillTolerancePct, candles } = input;
+  const { side, entry, takeProfit, stopLoss, decisionAt, expireBars, fillTolerancePct, candles, manualEntry, manualExit } = input;
 
   const bars = candles.filter((c) => c.openTime >= decisionAt).slice(0, expireBars);
-  const tolerance = entry * (fillTolerancePct / 100);
-  const entryLow = entry - tolerance;
-  const entryHigh = entry + tolerance;
 
-  const rDenom = side === "LONG" ? entry - stopLoss : stopLoss - entry;
-  const rNum = side === "LONG" ? takeProfit - entry : entry - takeProfit;
-  const winR = rDenom > 0 ? rNum / rDenom : 0;
+  // R-multiple uses the *real* fill, not the configured entry price.
+  const rMul = (fill: number, exit: number): number => {
+    if (side === "LONG") {
+      const denom = fill - stopLoss;
+      return denom > 0 ? (exit - fill) / denom : 0;
+    }
+    const denom = stopLoss - fill;
+    return denom > 0 ? (fill - exit) / denom : 0;
+  };
 
+  // ── Step 1: establish entry ────────────────────────────────────────────────
   let enteredAt: number | undefined;
-  let entryBarIndex = -1;
   let entryFill: number | undefined;
+  let entryBarIndex = -1; // -1 means "no bar in `bars` corresponds to the entry"
 
-  for (let i = 0; i < bars.length; i++) {
-    const bar = bars[i];
-
-    // Pre-entry: did this bar print the entry price?
-    if (entryBarIndex === -1) {
-      const touchedEntry = bar.low <= entryHigh && bar.high >= entryLow;
-      if (!touchedEntry) continue;
-      enteredAt = bar.openTime;
-      entryBarIndex = i;
-      entryFill = clamp(entry, bar.low, bar.high);
-      // Same bar — could TP or SL also have hit? If so, conservative: treat as
-      // "filled but unresolved this bar", check next bar onwards. (We can't say
-      // entry-then-SL vs SL-then-entry without intra-bar data — being lenient on
-      // entry but strict on exit.)
-    }
-
-    if (entryBarIndex === -1) continue;
-
-    // Post-entry (or same-bar after fill): check TP/SL
-    if (i === entryBarIndex && entryFill !== undefined) {
-      // On the entry bar itself, TP/SL only "count" if the bar's extreme breached
-      // the level after entry was filled. We approximate by checking whether the
-      // bar reached past TP/SL at all — if BOTH, it's a same-bar collision.
-      const sameBarTp = side === "LONG" ? bar.high >= takeProfit : bar.low <= takeProfit;
-      const sameBarSl = side === "LONG" ? bar.low <= stopLoss : bar.high >= stopLoss;
-      if (sameBarTp && sameBarSl) {
-        return collisionLoss(entry, stopLoss, side, enteredAt!, bar, i);
+  if (manualEntry) {
+    enteredAt = manualEntry.at;
+    entryFill = manualEntry.fill;
+    const idx = bars.findIndex((c) => c.openTime >= manualEntry.at);
+    entryBarIndex = idx; // may be -1 if manual entry is in the future relative to candles
+  } else {
+    const tolerance = entry * (fillTolerancePct / 100);
+    const entryLow = entry - tolerance;
+    const entryHigh = entry + tolerance;
+    for (let i = 0; i < bars.length; i++) {
+      const bar = bars[i];
+      if (bar.low <= entryHigh && bar.high >= entryLow) {
+        enteredAt = bar.openTime;
+        entryBarIndex = i;
+        entryFill = clamp(entry, bar.low, bar.high);
+        break;
       }
-      if (sameBarSl) return slHit(side, entry, stopLoss, enteredAt!, bar, i);
-      if (sameBarTp) return tpHit(side, takeProfit, winR, enteredAt!, bar, i);
-      continue;
     }
-
-    const tpHitNow = side === "LONG" ? bar.high >= takeProfit : bar.low <= takeProfit;
-    const slHitNow = side === "LONG" ? bar.low <= stopLoss : bar.high >= stopLoss;
-    if (tpHitNow && slHitNow) return collisionLoss(entry, stopLoss, side, enteredAt!, bar, i);
-    if (slHitNow) return slHit(side, entry, stopLoss, enteredAt!, bar, i);
-    if (tpHitNow) return tpHit(side, takeProfit, winR, enteredAt!, bar, i);
   }
 
-  // Walked all available bars without TP/SL.
-  if (bars.length < expireBars) {
+  // ── Step 2: manual exit short-circuit ──────────────────────────────────────
+  // Only valid once entry is established (auto or manual).
+  if (manualExit && enteredAt !== undefined && entryFill !== undefined) {
+    const r = rMul(entryFill, manualExit.price);
+    const outcome: "Win" | "Loss" | "NA" = r > 0 ? "Win" : r < 0 ? "Loss" : "NA";
+    const exitBarIdx = bars.findIndex((c) => c.openTime >= manualExit.at);
     return {
-      status: entryBarIndex === -1 ? "pending" : "active",
-      meta: { barsConsidered: bars.length, enteredAt },
+      status: "resolved",
+      outcome,
+      outcomeFields: {
+        source: "auto",
+        r_multiple: round(r, 2),
+        entry_fill: entryFill,
+        exit_price: manualExit.price,
+        ...(entryBarIndex >= 0 ? { bars_to_entry: entryBarIndex } : {}),
+        ...(exitBarIdx >= 0 ? { bars_to_exit: exitBarIdx } : {}),
+      },
+      meta: { enteredAt, hitAt: manualExit.at, barsConsidered: bars.length, reason: "manual_exit" },
     };
   }
 
-  // Out of bars (>= expireBars) → expired.
-  if (entryBarIndex === -1) {
+  // ── Step 3: no entry yet ──────────────────────────────────────────────────
+  if (enteredAt === undefined || entryFill === undefined) {
+    if (bars.length < expireBars) {
+      return { status: "pending", meta: { barsConsidered: bars.length } };
+    }
     return {
       status: "expired",
       outcome: "NA",
@@ -122,11 +131,38 @@ export function resolveTradeFromCandles(input: ResolveInput): ResolveResult {
       meta: { barsConsidered: bars.length, reason: "no_fill_expired" },
     };
   }
-  // Entered but never resolved — mark NA with mark-to-market.
+
+  // ── Step 4: walk for TP/SL from entry bar onward ──────────────────────────
+  const walkStart = entryBarIndex >= 0 ? entryBarIndex : bars.length;
+  for (let i = walkStart; i < bars.length; i++) {
+    const bar = bars[i];
+
+    // Auto entry: same-bar TP/SL leniency (entry filled mid-bar; only count
+    // exits if the bar's extreme breached the level).
+    if (i === entryBarIndex && !manualEntry) {
+      const sameBarTp = side === "LONG" ? bar.high >= takeProfit : bar.low <= takeProfit;
+      const sameBarSl = side === "LONG" ? bar.low <= stopLoss : bar.high >= stopLoss;
+      if (sameBarTp && sameBarSl) return collision(entryFill, stopLoss, enteredAt, bar, i, rMul);
+      if (sameBarSl) return slHit(entryFill, stopLoss, enteredAt, bar, i, rMul);
+      if (sameBarTp) return tpHit(entryFill, takeProfit, enteredAt, bar, i, rMul);
+      continue;
+    }
+
+    const tpHitNow = side === "LONG" ? bar.high >= takeProfit : bar.low <= takeProfit;
+    const slHitNow = side === "LONG" ? bar.low <= stopLoss : bar.high >= stopLoss;
+    if (tpHitNow && slHitNow) return collision(entryFill, stopLoss, enteredAt, bar, i, rMul);
+    if (slHitNow) return slHit(entryFill, stopLoss, enteredAt, bar, i, rMul);
+    if (tpHitNow) return tpHit(entryFill, takeProfit, enteredAt, bar, i, rMul);
+  }
+
+  // ── Step 5: entry but no resolution ───────────────────────────────────────
+  if (bars.length < expireBars) {
+    return { status: "active", meta: { barsConsidered: bars.length, enteredAt } };
+  }
+
+  // Expired with mark-to-market against last close.
   const lastClose = bars[bars.length - 1].close;
-  const mtmR = side === "LONG"
-    ? rDenom > 0 ? (lastClose - entry) / rDenom : 0
-    : rDenom > 0 ? (entry - lastClose) / rDenom : 0;
+  const mtmR = rMul(entryFill, lastClose);
   return {
     status: "expired",
     outcome: "NA",
@@ -135,39 +171,36 @@ export function resolveTradeFromCandles(input: ResolveInput): ResolveResult {
       r_multiple: round(mtmR, 2),
       entry_fill: entryFill,
       exit_price: lastClose,
-      bars_to_entry: entryBarIndex,
+      ...(entryBarIndex >= 0 ? { bars_to_entry: entryBarIndex } : {}),
       bars_to_exit: bars.length - 1,
     },
     meta: { enteredAt, barsConsidered: bars.length, reason: "no_resolution_expired" },
   };
 }
 
-function tpHit(side: TradeSide, tp: number, winR: number, enteredAt: number, bar: Candle, idx: number): ResolveResult {
-  void side;
+function tpHit(fill: number, tp: number, enteredAt: number, bar: Candle, idx: number, rMul: (f: number, e: number) => number): ResolveResult {
   return {
     status: "resolved",
     outcome: "Win",
-    outcomeFields: { source: "auto", r_multiple: round(winR, 2), exit_price: tp, bars_to_exit: idx },
+    outcomeFields: { source: "auto", r_multiple: round(rMul(fill, tp), 2), entry_fill: fill, exit_price: tp, bars_to_exit: idx },
     meta: { enteredAt, hitAt: bar.openTime, barsConsidered: idx + 1, reason: "tp_hit" },
   };
 }
 
-function slHit(side: TradeSide, entry: number, sl: number, enteredAt: number, bar: Candle, idx: number): ResolveResult {
-  void side; void entry;
+function slHit(fill: number, sl: number, enteredAt: number, bar: Candle, idx: number, rMul: (f: number, e: number) => number): ResolveResult {
   return {
     status: "resolved",
     outcome: "Loss",
-    outcomeFields: { source: "auto", r_multiple: -1, exit_price: sl, bars_to_exit: idx },
+    outcomeFields: { source: "auto", r_multiple: round(rMul(fill, sl), 2), entry_fill: fill, exit_price: sl, bars_to_exit: idx },
     meta: { enteredAt, hitAt: bar.openTime, barsConsidered: idx + 1, reason: "sl_hit" },
   };
 }
 
-function collisionLoss(entry: number, sl: number, side: TradeSide, enteredAt: number, bar: Candle, idx: number): ResolveResult {
-  void entry; void side;
+function collision(fill: number, sl: number, enteredAt: number, bar: Candle, idx: number, rMul: (f: number, e: number) => number): ResolveResult {
   return {
     status: "resolved",
     outcome: "Loss",
-    outcomeFields: { source: "auto", r_multiple: -1, exit_price: sl, bars_to_exit: idx },
+    outcomeFields: { source: "auto", r_multiple: round(rMul(fill, sl), 2), entry_fill: fill, exit_price: sl, bars_to_exit: idx },
     meta: { enteredAt, hitAt: bar.openTime, barsConsidered: idx + 1, reason: "same_bar_collision" },
   };
 }

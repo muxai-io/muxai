@@ -160,11 +160,15 @@ export function ResultCardPanel({ agentId, adapterConfig, initialCardConfig }: P
               <div className="grid grid-cols-3 gap-2 pt-1">
                 <div className="space-y-1">
                   <Label className="text-xs">Exchange</Label>
-                  <Input
-                    className="h-7 text-xs"
+                  <Select
                     value={autoResolve.exchange ?? AUTO_RESOLVE_DEFAULTS.exchange}
-                    onChange={(e) => { setAutoResolve((c) => ({ ...c, exchange: e.target.value })); setSaved(false); }}
-                  />
+                    onValueChange={(v) => { setAutoResolve((c) => ({ ...c, exchange: v })); setSaved(false); }}
+                  >
+                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="binance">Binance</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Expire after (bars)</Label>

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LiveLogs } from "@/components/live-logs";
 import { RunResult } from "@/components/run-result";
 import { OutcomePicker } from "@/components/outcome-picker";
+import { ManualTradePanel } from "@/components/manual-trade-panel";
 import type { ResultCardConfig } from "@/lib/result-cards";
 
 async function getRun(runId: string): Promise<HeartbeatRun | null> {
@@ -59,64 +60,130 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Details</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Source" value={run.invocationSource} />
-            <Row label="Exit code" value={run.exitCode !== null ? String(run.exitCode) : "—"} />
-            {duration !== null && <Row label="Duration" value={`${duration}s`} />}
-            {run.startedAt && <Row label="Started" value={new Date(run.startedAt).toLocaleString()} />}
-            {run.finishedAt && <Row label="Finished" value={new Date(run.finishedAt).toLocaleString()} />}
-          </CardContent>
-        </Card>
-
-        {run.errorMsg && (
-          <Card className="border-destructive/50">
-            <CardHeader><CardTitle className="text-sm text-destructive">Error</CardTitle></CardHeader>
-            <CardContent>
-              <pre className="text-xs whitespace-pre-wrap text-destructive">{run.errorMsg}</pre>
-            </CardContent>
-          </Card>
-        )}
+      <div className="rounded-lg border border-border bg-card/40 px-4 py-2.5 flex items-center gap-x-5 gap-y-1.5 flex-wrap">
+        <Meta label="Source" value={run.invocationSource} />
+        <Meta label="Exit" value={run.exitCode !== null ? String(run.exitCode) : "—"} />
+        {duration !== null && <Meta label="Duration" value={`${duration}s`} />}
+        {run.startedAt && <Meta label="Started" value={new Date(run.startedAt).toLocaleString()} />}
+        {run.finishedAt && <Meta label="Finished" value={new Date(run.finishedAt).toLocaleString()} />}
       </div>
 
-      {run.resultJson && (
-        <RunResult resultJson={run.resultJson} cardConfig={(run.agent?.adapterConfig as Record<string, unknown>)?.resultCard as ResultCardConfig | undefined} />
+      {run.errorMsg && (
+        <Card className="border-destructive/50">
+          <CardHeader><CardTitle className="text-sm text-destructive">Error</CardTitle></CardHeader>
+          <CardContent>
+            <pre className="text-xs whitespace-pre-wrap text-destructive">{run.errorMsg}</pre>
+          </CardContent>
+        </Card>
       )}
 
-      {run.resultJson && <AutoResolveStatus run={run} />}
-
       {run.resultJson && (
-        <OutcomePicker
-          runId={run.id}
-          initialOutcome={run.outcome}
-          initialFields={run.outcomeFields}
-          pastLabels={pastLabels}
-          autoResolveActive={isAutoResolveActive(run)}
-        />
+        <section className="space-y-3">
+          <h2 className="text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground">Tracking &amp; outcome</h2>
+          <AutoResolveStatus run={run} />
+          {isAutoResolveActive(run) && (run.resolutionStatus === "pending" || run.resolutionStatus === "active") && (
+            <ManualTradeSection run={run} />
+          )}
+          <OutcomePicker
+            runId={run.id}
+            initialOutcome={run.outcome}
+            initialFields={run.outcomeFields}
+            pastLabels={pastLabels}
+            autoResolveActive={isAutoResolveActive(run)}
+          />
+        </section>
       )}
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Logs</CardTitle></CardHeader>
-        <CardContent>
-          <LiveLogs
-            runId={run.id}
-            initialLogs={run.logs ?? ""}
-            initialStatus={run.status}
-            startedAt={run.startedAt}
-          />
+        <CardContent className="p-0">
+          {run.resultJson && (
+            <details open className="group">
+              <summary className="cursor-pointer list-none flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-foreground/[0.02] transition-colors">
+                <span>Result</span>
+                <span className="text-muted-foreground text-xs group-open:rotate-90 transition-transform">▸</span>
+              </summary>
+              <div className="px-4 pb-4">
+                <RunResult
+                  resultJson={run.resultJson}
+                  cardConfig={(run.agent?.adapterConfig as Record<string, unknown>)?.resultCard as ResultCardConfig | undefined}
+                  compact
+                />
+              </div>
+            </details>
+          )}
+          {run.resultJson && <div className="border-t border-border" />}
+          <details className="group">
+            <summary className="cursor-pointer list-none flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-foreground/[0.02] transition-colors">
+              <span>Logs</span>
+              <span className="text-muted-foreground text-xs group-open:rotate-90 transition-transform">▸</span>
+            </summary>
+            <div className="px-4 pb-4">
+              <LiveLogs
+                runId={run.id}
+                initialLogs={run.logs ?? ""}
+                initialStatus={run.status}
+                startedAt={run.startedAt}
+              />
+            </div>
+          </details>
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Meta({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-muted-foreground shrink-0">{label}</span>
-      <span className="text-right">{value}</span>
+    <span className="inline-flex items-baseline gap-1.5 text-xs">
+      <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-muted-foreground/70">{label}</span>
+      <span className="text-foreground/90 font-mono">{value}</span>
+    </span>
+  );
+}
+
+function ManualTradeSection({ run }: { run: HeartbeatRun }) {
+  const adapter = (run.agent?.adapterConfig ?? {}) as Record<string, unknown>;
+  const card = adapter.resultCard as { mapping?: Record<string, string> } | undefined;
+  const mapping = card?.mapping ?? {};
+  const k = (slot: string) => mapping[slot]?.trim() || slot;
+  const result = (run.resultJson ?? {}) as Record<string, unknown>;
+  const num = (key: string): number | null => {
+    const v = result[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") { const n = parseFloat(v); return Number.isFinite(n) ? n : null; }
+    return null;
+  };
+
+  if (run.resolutionStatus === "pending") {
+    return (
+      <ManualTradePanel
+        runId={run.id}
+        mode="entry"
+        defaultPrice={num(k("entry"))}
+        hint="Price is close but didn't quite tag the level — record the actual fill you got."
+      />
+    );
+  }
+
+  // active — offer Mark Exited (and still allow re-marking entry to correct slip)
+  const meta = (run.resolutionMeta ?? {}) as Record<string, unknown>;
+  const manualEntry = meta.manualEntry && typeof meta.manualEntry === "object"
+    ? meta.manualEntry as { fill?: number }
+    : null;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <ManualTradePanel
+        runId={run.id}
+        mode="entry"
+        defaultPrice={manualEntry?.fill ?? num(k("entry"))}
+        hint="Adjust the fill price if you got slippage on entry."
+      />
+      <ManualTradePanel
+        runId={run.id}
+        mode="exit"
+        defaultPrice={num(k("take_profit"))}
+        hint="Cutting early or filled with slippage? Record the real exit."
+      />
     </div>
   );
 }

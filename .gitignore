@@ -38,5 +38,8 @@ pnpm-debug.log*
 /reference
 /solana-program
 
+# marketing — separate one-pager, deployed independently
+/marketing
+
 #cloud
 .claude/settings.local.json

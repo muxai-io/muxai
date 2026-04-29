@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.5] - 2026-04-29
+
+### Added
+
+- Auto-resolve trade outcomes — pure resolver at `apps/api/src/services/trade-resolver.ts` (LONG/SHORT win/loss, no-fill expiry, gap-through-SL, same-bar collision, mark-to-market on expiry); 16 unit tests
+- Background tick at `apps/api/src/services/trade-resolver-tick.ts` — every 60s, queries open trade-decision runs with `autoResolve.enabled !== false`, groups by `(exchange, symbol, timeframe)`, fetches Binance klines, resolves, persists
+- Three new nullable columns on `HeartbeatRun`: `resolutionStatus`, `resolutionCheckedAt`, `resolutionMeta`. `outcomeFields.source = "auto" | "manual"` distinguishes resolution path
+- Per-agent auto-resolve config on `adapterConfig.resultCard.autoResolve`: `{ enabled, exchange, expireBars, fillTolerancePct }`. Exchange field is a `<Select>` (Binance only). Outcome card on the run detail page shows an amber note when auto-resolve is on
+- Manual entry/exit overrides — `POST /api/runs/:id/manual-entry` and `POST /api/runs/:id/manual-exit` routes; resolver tick reconciles `manualEntry`/`manualExit` on `resolutionMeta`. `apps/web/src/components/manual-trade-panel.tsx` embedded on both run detail page and Results page chart pane
+- Scheduler registry at `apps/api/src/services/scheduler-registry.ts` — in-memory map exposing heartbeat (per-agent), Telegram poller (per-agent), and the global trade-resolver. `GET /api/schedulers` snapshot endpoint
+- Schedulers panel on `/control-tower` (`apps/web/src/app/control-tower/schedulers-panel.tsx`) — polls every 5s with status LED, kind badge, schedule pill, last-tick relative time, and per-kind meta
+- Results page → trading terminal (`apps/web/src/app/results/terminal.tsx`) — two-pane blotter + Result Card layout with aggregate strip (Active / Closed / Cumulative R / Hit rate / Profit factor) toggled by 24h / 7d / all, status + side filters, and collapsible Chart and Decision JSON sections
+- `apps/web/src/components/monitoring-badge.tsx` — reusable resolution-state pill (pending / active / Win+R / Loss+R / expired) used on Results blotter and run lists
+- TradingView Lightweight Charts integration (`lightweight-charts@5.2.0`, MIT, self-hosted) at `apps/web/src/components/trade-chart.tsx` — candlesticks + dashed entry/TP/SL price-lines + decision and resolution markers
+- Position-box primitive on the chart — green TP zone + red SL zone drawn under candles between decision time and exit/now (z-order `bottom`); snaps decision/exit times to nearest bar across timeframes
+- EMA 20 / 50 / 200 client-computed overlays and volume histogram in a separate sub-pane (~80px); default chart height bumped to 480; default zoom −200 / +300 bars around decision
+- New `GET /api/candles` proxy to Binance klines (server-side, up to 1000 candles); `since = decisionAt − 800·intervalMs` so 1000-candle requests return ~1000
+- Run detail page polish — one-line meta strip (Source · Exit · Duration · Started · Finished); merged Result + Logs into one card with two `<details>` collapsibles
+
+### Changed
+
+- Result card pruning — removed `task-decision`, `alert`, `metric-report`, `sentiment`, `research-summary` from `CARD_TYPES`; only `trade-decision` remains alongside `none` and `raw`. Agents using removed types fall through to no card render with raw JSON preserved
+
 ## [0.1.4] - 2026-04-21
 
 ### Added

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma, Prisma } from "../lib/db";
 import { onRunEvent } from "../services/run-events";
+import { resolveTradeFromCandles, type TradeSide } from "../services/trade-resolver";
 
 export const runRoutes = Router();
 
@@ -79,6 +80,165 @@ runRoutes.post("/:id/outcome", async (req, res) => {
   });
   res.json(updated);
 });
+
+// POST /api/runs/:id/manual-entry — user marks the trade as entered (real fill)
+// Body: { fill: number, at?: number } — at defaults to now
+// Records resolutionMeta.manualEntry; tick will re-resolve TP/SL on next pass.
+runRoutes.post("/:id/manual-entry", async (req, res) => {
+  const { fill, at } = req.body as { fill?: unknown; at?: unknown };
+  if (typeof fill !== "number" || !Number.isFinite(fill) || fill <= 0) {
+    res.status(400).json({ error: "fill must be a positive number" });
+    return;
+  }
+  const atMs = typeof at === "number" && Number.isFinite(at) ? at : Date.now();
+
+  const run = await prisma.heartbeatRun.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, resolutionMeta: true, agent: { select: { adapterConfig: true } } },
+  });
+  if (!run) { res.status(404).json({ error: "Run not found" }); return; }
+  if (!isTradeDecisionRun(run.agent?.adapterConfig)) {
+    res.status(400).json({ error: "Run is not a trade-decision card" });
+    return;
+  }
+
+  const meta = (run.resolutionMeta ?? {}) as Record<string, unknown>;
+  const nextMeta = { ...meta, manualEntry: { at: atMs, fill } };
+
+  const updated = await prisma.heartbeatRun.update({
+    where: { id: run.id },
+    data: {
+      resolutionStatus: "active",
+      resolutionMeta: nextMeta as object,
+      resolutionCheckedAt: new Date(),
+    },
+    select: { id: true, resolutionStatus: true, resolutionMeta: true },
+  });
+  res.json(updated);
+});
+
+// POST /api/runs/:id/manual-exit — user marks the trade as exited (real exit)
+// Body: { price: number, at?: number }
+// Synchronously computes outcome using existing manualEntry (or the configured
+// entry from result_json as fallback). Writes outcome immediately.
+runRoutes.post("/:id/manual-exit", async (req, res) => {
+  const { price, at } = req.body as { price?: unknown; at?: unknown };
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
+    res.status(400).json({ error: "price must be a positive number" });
+    return;
+  }
+  const atMs = typeof at === "number" && Number.isFinite(at) ? at : Date.now();
+
+  const run = await prisma.heartbeatRun.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true, resolutionMeta: true, resultJson: true, finishedAt: true,
+      agent: { select: { adapterConfig: true } },
+    },
+  });
+  if (!run) { res.status(404).json({ error: "Run not found" }); return; }
+  if (!isTradeDecisionRun(run.agent?.adapterConfig)) {
+    res.status(400).json({ error: "Run is not a trade-decision card" });
+    return;
+  }
+
+  const trade = readTradePlan(run.agent!.adapterConfig, run.resultJson);
+  if (!trade) {
+    res.status(400).json({ error: "Run has no resolvable trade plan" });
+    return;
+  }
+
+  const meta = (run.resolutionMeta ?? {}) as Record<string, unknown>;
+  const existingManualEntry = meta.manualEntry && typeof meta.manualEntry === "object"
+    ? meta.manualEntry as { at: number; fill: number }
+    : null;
+  // If user never marked entry explicitly, fall back to configured entry as fill.
+  const manualEntry = existingManualEntry ?? { at: run.finishedAt?.getTime() ?? atMs, fill: trade.entry };
+  const manualExit = { at: atMs, price };
+
+  const result = resolveTradeFromCandles({
+    side: trade.side,
+    entry: trade.entry,
+    takeProfit: trade.takeProfit,
+    stopLoss: trade.stopLoss,
+    decisionAt: run.finishedAt?.getTime() ?? atMs,
+    expireBars: trade.expireBars,
+    fillTolerancePct: trade.fillTolerancePct,
+    candles: [],
+    manualEntry,
+    manualExit,
+  });
+
+  const nextMeta = { ...meta, ...(result.meta as Record<string, unknown>), manualEntry, manualExit };
+  const updated = await prisma.heartbeatRun.update({
+    where: { id: run.id },
+    data: {
+      resolutionStatus: result.status,
+      resolutionCheckedAt: new Date(),
+      resolutionMeta: nextMeta as object,
+      ...(result.outcome ? { outcome: result.outcome, outcomeAt: new Date() } : {}),
+      ...(result.outcomeFields ? { outcomeFields: result.outcomeFields as object } : {}),
+    },
+    select: { id: true, outcome: true, outcomeFields: true, resolutionStatus: true, resolutionMeta: true },
+  });
+  res.json(updated);
+});
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+function isTradeDecisionRun(adapterConfig: unknown): boolean {
+  if (!adapterConfig || typeof adapterConfig !== "object") return false;
+  const card = (adapterConfig as Record<string, unknown>).resultCard;
+  if (!card || typeof card !== "object") return false;
+  return (card as { type?: string }).type === "trade-decision";
+}
+
+interface TradePlan {
+  side: TradeSide;
+  entry: number;
+  takeProfit: number;
+  stopLoss: number;
+  expireBars: number;
+  fillTolerancePct: number;
+}
+
+function readTradePlan(adapterConfig: unknown, resultJson: unknown): TradePlan | null {
+  if (!adapterConfig || typeof adapterConfig !== "object") return null;
+  if (!resultJson || typeof resultJson !== "object") return null;
+  const card = (adapterConfig as Record<string, unknown>).resultCard as
+    | { mapping?: Record<string, string>; autoResolve?: { expireBars?: number; fillTolerancePct?: number } }
+    | undefined;
+  const mapping = card?.mapping ?? {};
+  const k = (slot: string) => mapping[slot]?.trim() || slot;
+  const r = resultJson as Record<string, unknown>;
+
+  const sideRaw = r[k("decision")];
+  const side = typeof sideRaw === "string" && (sideRaw.toUpperCase() === "LONG" || sideRaw.toUpperCase() === "SHORT")
+    ? (sideRaw.toUpperCase() as TradeSide) : null;
+  const entry = numberAt(r, k("entry"));
+  const tp = numberAt(r, k("take_profit"));
+  const sl = numberAt(r, k("stop_loss"));
+  if (!side || entry === null || tp === null || sl === null) return null;
+
+  return {
+    side,
+    entry,
+    takeProfit: tp,
+    stopLoss: sl,
+    expireBars: card?.autoResolve?.expireBars ?? 24,
+    fillTolerancePct: typeof card?.autoResolve?.fillTolerancePct === "number" ? card!.autoResolve!.fillTolerancePct! : 0.1,
+  };
+}
+
+function numberAt(o: Record<string, unknown>, key: string): number | null {
+  const v = o[key];
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 // GET /api/runs/:id/logs
 runRoutes.get("/:id/logs", async (req, res) => {

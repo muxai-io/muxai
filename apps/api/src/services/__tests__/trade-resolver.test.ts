@@ -137,4 +137,91 @@ describe("resolveTradeFromCandles", () => {
     });
     expect(out.outcome).toBe("Loss");
   });
+
+  it("manual entry — skips fill detection, uses user-supplied fill price", () => {
+    // Price gaps past entry zone — auto would never have filled.
+    const candles = [
+      bar(0, 102, 105, 102, 104),
+      bar(1, 104, 112, 103, 110), // TP hit
+    ];
+    const out = resolveTradeFromCandles({
+      ...baseInput,
+      candles,
+      manualEntry: { at: T0, fill: 102 }, // user got filled at 102, not 100
+    });
+    expect(out.status).toBe("resolved");
+    expect(out.outcome).toBe("Win");
+    expect(out.outcomeFields?.entry_fill).toBe(102);
+    // r_multiple uses real fill: (110-102)/(102-95) = 1.14
+    expect(out.outcomeFields?.r_multiple).toBeCloseTo(1.14, 2);
+  });
+
+  it("manual entry — active with no TP/SL yet", () => {
+    const candles = [
+      bar(0, 102, 105, 102, 104),
+      bar(1, 104, 106, 103, 105),
+    ];
+    const out = resolveTradeFromCandles({
+      ...baseInput,
+      candles,
+      manualEntry: { at: T0, fill: 102 },
+    });
+    expect(out.status).toBe("active");
+    expect(out.meta.enteredAt).toBe(T0);
+  });
+
+  it("manual exit — terminates at user-supplied price (Win)", () => {
+    const candles = [
+      bar(0, 99, 101, 98, 100), // auto entry at 100
+      bar(1, 100, 104, 99, 103),
+    ];
+    const out = resolveTradeFromCandles({
+      ...baseInput,
+      candles,
+      manualExit: { at: T0 + ONE_HOUR, price: 108 }, // user cut at 108 before TP=110
+    });
+    expect(out.status).toBe("resolved");
+    expect(out.outcome).toBe("Win");
+    expect(out.outcomeFields?.exit_price).toBe(108);
+    // (108-100)/(100-95) = 1.6
+    expect(out.outcomeFields?.r_multiple).toBeCloseTo(1.6, 2);
+    expect(out.meta.reason).toBe("manual_exit");
+  });
+
+  it("manual exit — Loss when exit below entry on LONG", () => {
+    const candles = [bar(0, 99, 101, 98, 100)]; // auto entry
+    const out = resolveTradeFromCandles({
+      ...baseInput,
+      candles,
+      manualExit: { at: T0, price: 97 }, // cut early at 97
+    });
+    expect(out.outcome).toBe("Loss");
+    expect(out.outcomeFields?.r_multiple).toBeCloseTo(-0.6, 2);
+  });
+
+  it("manual entry + manual exit — short-circuits without needing post-bars", () => {
+    // No candles at all — pure journal entry from user.
+    const out = resolveTradeFromCandles({
+      ...baseInput,
+      candles: [],
+      manualEntry: { at: T0, fill: 100 },
+      manualExit: { at: T0 + ONE_HOUR, price: 107 },
+    });
+    expect(out.status).toBe("resolved");
+    expect(out.outcome).toBe("Win");
+    expect(out.outcomeFields?.entry_fill).toBe(100);
+    expect(out.outcomeFields?.exit_price).toBe(107);
+    expect(out.outcomeFields?.r_multiple).toBeCloseTo(1.4, 2);
+  });
+
+  it("manual exit ignored when entry not yet established", () => {
+    // Price never approached entry; manualExit alone shouldn't resolve.
+    const candles = [bar(0, 200, 205, 195, 200)];
+    const out = resolveTradeFromCandles({
+      ...baseInput,
+      candles,
+      manualExit: { at: T0, price: 110 },
+    });
+    expect(out.status).toBe("pending");
+  });
 });

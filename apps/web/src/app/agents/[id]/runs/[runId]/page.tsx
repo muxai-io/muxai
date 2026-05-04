@@ -9,7 +9,8 @@ import { LiveLogs } from "@/components/live-logs";
 import { RunResult } from "@/components/run-result";
 import { OutcomePicker } from "@/components/outcome-picker";
 import { ManualTradePanel } from "@/components/manual-trade-panel";
-import type { ResultCardConfig } from "@/lib/result-cards";
+import { ReExamineButton } from "@/components/re-examine-button";
+import { canReExamine, type ResultCardConfig } from "@/lib/result-cards";
 
 async function getRun(runId: string): Promise<HeartbeatRun | null> {
   try { return await apiFetch<HeartbeatRun>(`/api/runs/${runId}`); } catch { return null; }
@@ -17,6 +18,19 @@ async function getRun(runId: string): Promise<HeartbeatRun | null> {
 
 async function getSiblingRuns(agentId: string): Promise<HeartbeatRun[]> {
   try { return await apiFetch<HeartbeatRun[]>(`/api/agents/${agentId}/runs`); } catch { return []; }
+}
+
+async function getReExaminations(parentRunId: string): Promise<HeartbeatRun[]> {
+  try { return await apiFetch<HeartbeatRun[]>(`/api/runs/${parentRunId}/re-examinations`); } catch { return []; }
+}
+
+// Re-examination runs override their agent's normal card with the generic
+// `re-examination` card. Detected by the presence of `parentRunId`.
+function resolveCardConfig(run: HeartbeatRun): ResultCardConfig | undefined {
+  if (run.parentRunId) {
+    return { type: "re-examination", mapping: {} };
+  }
+  return (run.agent?.adapterConfig as Record<string, unknown>)?.resultCard as ResultCardConfig | undefined;
 }
 
 export default async function RunDetailPage({ params }: { params: Promise<{ id: string; runId: string }> }) {
@@ -32,6 +46,13 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
         .filter((o): o is string => typeof o === "string" && o.trim().length > 0),
     ),
   );
+
+  // Children render under the parent as a chronological conviction history.
+  // Skip the fetch for re-examination runs themselves (they don't have children today).
+  const reExaminations = !run.parentRunId ? await getReExaminations(run.id) : [];
+
+  const card = (run.agent?.adapterConfig as Record<string, unknown>)?.resultCard as ResultCardConfig | undefined;
+  const reExamineAllowed = !run.parentRunId && canReExamine(card?.type, run.resolutionStatus);
 
   const duration =
     run.startedAt && run.finishedAt
@@ -91,7 +112,40 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
             pastLabels={pastLabels}
             autoResolveActive={isAutoResolveActive(run)}
           />
+          {reExamineAllowed && (
+            <div className="flex items-center gap-3 pt-1">
+              <ReExamineButton parentRunId={run.id} />
+              <span className="text-[11px] text-muted-foreground">Re-run the full team to update conviction on this decision.</span>
+            </div>
+          )}
         </section>
+      )}
+
+      {run.parentRunId && (
+        <Card className="border-blue-500/30 bg-blue-500/5">
+          <CardContent className="p-3 text-sm flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-muted-foreground">Re-examines</span>
+            <Link
+              href={`/agents/${id}/runs/${run.parentRunId}`}
+              className="font-mono text-blue-400 hover:underline"
+            >
+              {run.parentRunId.slice(0, 8)}…
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {reExaminations.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Conviction history · {reExaminations.length}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {reExaminations.map((r) => (
+              <ReExaminationRow key={r.id} run={r} agentId={id} />
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       <Card>
@@ -105,7 +159,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
               <div className="px-4 pb-4">
                 <RunResult
                   resultJson={run.resultJson}
-                  cardConfig={(run.agent?.adapterConfig as Record<string, unknown>)?.resultCard as ResultCardConfig | undefined}
+                  cardConfig={resolveCardConfig(run)}
                   compact
                 />
               </div>
@@ -129,6 +183,40 @@ export default async function RunDetailPage({ params }: { params: Promise<{ id: 
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ReExaminationRow({ run, agentId }: { run: HeartbeatRun; agentId: string }) {
+  const result = (run.resultJson ?? {}) as Record<string, unknown>;
+  const score = typeof result.conviction_score === "number" ? result.conviction_score : null;
+  const action = typeof result.suggested_action === "string" ? result.suggested_action : null;
+  const notes = typeof result.notes === "string" ? result.notes : null;
+  const when = run.finishedAt ? new Date(run.finishedAt).toLocaleString() : "running…";
+
+  const tone = score === null
+    ? "text-muted-foreground"
+    : score >= 70 ? "text-emerald-400"
+    : score >= 40 ? "text-amber-400"
+    : "text-red-400";
+
+  return (
+    <Link
+      href={`/agents/${agentId}/runs/${run.id}`}
+      className="block rounded-md border border-border bg-card/40 px-3 py-2 hover:bg-foreground/[0.02] transition-colors"
+    >
+      <div className="flex items-center gap-3 text-sm">
+        <span className={`font-mono font-semibold ${tone}`}>
+          {score !== null ? `${score}` : "—"}
+        </span>
+        {action && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-muted text-muted-foreground">
+            {action}
+          </span>
+        )}
+        <span className="text-xs text-muted-foreground font-mono">{when}</span>
+      </div>
+      {notes && <div className="text-xs text-muted-foreground mt-1">{notes}</div>}
+    </Link>
   );
 }
 

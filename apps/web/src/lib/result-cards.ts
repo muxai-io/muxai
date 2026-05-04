@@ -13,6 +13,13 @@ export interface CardDefinition {
   label: string;
   description: string;
   slots: CardSlot[];
+  // Re-examine capability — declarative, read by the platform.
+  // false (default) hides the button; true always shows it; "until_resolved"
+  // hides it once the run has a closed/expired resolutionStatus.
+  reExaminable?: boolean | "until_resolved";
+  // Domain action vocabulary for re-examinations — inlined into the prompt
+  // so the model picks from the right enum for this card type.
+  reExamineActions?: string[];
 }
 
 export interface AutoResolveConfig {
@@ -40,6 +47,8 @@ export const CARD_TYPES: CardDefinition[] = [
     type: "trade-decision",
     label: "Trade Decision",
     description: "Trading signal with entry, take profit, and stop loss levels",
+    reExaminable: "until_resolved",
+    reExamineActions: ["HOLD", "CLOSE", "SCALE"],
     slots: [
       { key: "decision", label: "Decision", type: "badge", description: "LONG / SHORT / WAIT" },
       { key: "asset", label: "Asset", type: "subtitle" },
@@ -56,7 +65,32 @@ export const CARD_TYPES: CardDefinition[] = [
       { key: "previous_decisions", label: "Previous Decisions", type: "list", optional: true, description: "One-line summaries of recent prior calls (e.g. '2d ago · WAIT · range unresolved')" },
     ],
   },
+  {
+    type: "re-examination",
+    label: "Re-examination",
+    description: "Updated read on a prior decision: conviction score + notes + optional suggested action",
+    slots: [
+      { key: "target_run_id", label: "Re-examines", type: "subtitle", description: "ID of the parent run being re-evaluated" },
+      { key: "conviction_score", label: "Conviction", type: "metric", description: "0-100. 0 = original conclusion fully invalidated, 100 = fully confirmed" },
+      { key: "suggested_action", label: "Suggested Action", type: "badge", optional: true, description: "Domain-specific advisory string (e.g. HOLD/CLOSE/SCALE for trades). Advisory only — user decides." },
+      { key: "notes", label: "Notes", type: "body", description: "One sentence on what changed since the original decision" },
+      { key: "watch_for_review", label: "Watch-For Review", type: "list", optional: true, description: "Status of each prior watch-for item (played_out / failed / pending) — present only when the parent had watch_for" },
+      { key: "event_verdict", label: "Event Gate", type: "badge", optional: true, description: "Copied from News Analyst when relevant" },
+    ],
+  },
 ];
+
+// ─── Re-examine capability helpers ───────────────────────────────────────────
+
+/** Whether the re-examine button should be shown for a parent run with the given card + resolution status. */
+export function canReExamine(cardType: string | undefined, resolutionStatus: string | null | undefined): boolean {
+  if (!cardType) return false;
+  const def = getCardDefinition(cardType);
+  if (!def?.reExaminable) return false;
+  if (def.reExaminable === true) return true;
+  // "until_resolved" — only allowed while the run is still active/pending
+  return resolutionStatus === "active" || resolutionStatus === "pending";
+}
 
 export function getCardDefinition(type: string): CardDefinition | undefined {
   return CARD_TYPES.find((c) => c.type === type);

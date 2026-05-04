@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { ResultCard } from "@/components/result-card";
 import { ManualTradePanel } from "@/components/manual-trade-panel";
 import { EventsStream } from "@/components/events-stream";
-import type { ResultCardConfig } from "@/lib/result-cards";
+import { ReExamineButton } from "@/components/re-examine-button";
+import { canReExamine, type ResultCardConfig } from "@/lib/result-cards";
 
 interface Trade {
   runId: string;
@@ -31,6 +32,8 @@ interface Trade {
   hitAt: number | null;
   exitPrice: number | null;
   createdAt: string;
+  // Latest re-examination of this trade, if any
+  latestReExamination: { runId: string; convictionScore: number | null; suggestedAction: string | null; at: number } | null;
   rawRun: HeartbeatRun;
 }
 
@@ -44,8 +47,44 @@ export function ResultsTerminal({ runs }: { runs: HeartbeatRun[] }) {
   const [sideFilter, setSideFilter] = useState<SideFilter>("all");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
-  const trades = useMemo(() => runs.map(toTrade), [runs]);
-  // Show every run from a trade-decision agent — including WAIT (no levels).
+  // Build a map of parent runId -> latest re-examination so we can surface
+  // the most recent conviction score on the parent trade row.
+  const latestReExamByParent = useMemo(() => {
+    const map = new Map<string, Trade["latestReExamination"]>();
+    for (const r of runs) {
+      if (!r.parentRunId) continue;
+      const result = (r.resultJson ?? {}) as Record<string, unknown>;
+      const at = r.finishedAt ? new Date(r.finishedAt).getTime() : new Date(r.createdAt).getTime();
+      const candidate: NonNullable<Trade["latestReExamination"]> = {
+        runId: r.id,
+        convictionScore: typeof result.conviction_score === "number" ? result.conviction_score : null,
+        suggestedAction: typeof result.suggested_action === "string" ? result.suggested_action : null,
+        at,
+      };
+      const existing = map.get(r.parentRunId);
+      if (!existing || candidate.at > existing.at) map.set(r.parentRunId, candidate);
+    }
+    return map;
+  }, [runs]);
+
+  // Set of parent runIds whose re-examination is currently in flight.
+  // Used to disable the Re-examine button so we don't double-fire.
+  const reExamRunningByParent = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of runs) {
+      if (!r.parentRunId) continue;
+      if (r.status === "running" || r.status === "queued") set.add(r.parentRunId);
+    }
+    return set;
+  }, [runs]);
+
+  // Trades = parent runs only (re-examination runs are not standalone trades;
+  // their conviction is surfaced on the parent row instead).
+  const trades = useMemo(
+    () => runs.filter((r) => !r.parentRunId).map((r) => toTrade(r, latestReExamByParent.get(r.id) ?? null)),
+    [runs, latestReExamByParent],
+  );
+  // Show every parent run from a trade-decision agent — including WAIT (no levels).
   // Non-trade-decision agents are filtered out so the chart pane stays meaningful.
   const tradeDecisionTrades = useMemo(
     () => trades.filter((t) => isTradeDecisionAgent(t.rawRun)),
@@ -164,7 +203,11 @@ export function ResultsTerminal({ runs }: { runs: HeartbeatRun[] }) {
 
         {/* Chart pane — 6 cols */}
         <div className="lg:col-span-6 space-y-2">
-          {selected ? <ChartPane trade={selected} /> : <ChartEmpty />}
+          {selected ? (
+            <ChartPane trade={selected} reExamRunning={reExamRunningByParent.has(selected.runId)} />
+          ) : (
+            <ChartEmpty />
+          )}
         </div>
 
         {/* Events sidebar — 3 cols, asset-filtered to selected trade (or BTC fallback) */}
@@ -200,6 +243,12 @@ function FilterRow({ value, options, onChange }: { value: string; options: strin
 function BlotterRow({ trade }: { trade: Trade }) {
   const sideColor =
     trade.side === "LONG" ? "text-emerald-400" : trade.side === "SHORT" ? "text-red-400" : "text-amber-400";
+  const reExam = trade.latestReExamination;
+  const convictionTone = reExam?.convictionScore == null
+    ? "text-muted-foreground"
+    : reExam.convictionScore >= 70 ? "text-emerald-400"
+    : reExam.convictionScore >= 40 ? "text-amber-400"
+    : "text-red-400";
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
@@ -218,6 +267,15 @@ function BlotterRow({ trade }: { trade: Trade }) {
         </div>
         <MonitoringBadge run={trade.rawRun} compact />
       </div>
+      {reExam && reExam.convictionScore !== null && (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono">
+          <span className="text-muted-foreground/70 uppercase tracking-wider">conv</span>
+          <span className={`font-semibold ${convictionTone}`}>{reExam.convictionScore}</span>
+          {reExam.suggestedAction && (
+            <span className="text-muted-foreground uppercase tracking-wider">· {reExam.suggestedAction}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -225,9 +283,10 @@ function BlotterRow({ trade }: { trade: Trade }) {
 const TIMEFRAMES = ["15m", "30m", "1h", "4h", "1d"] as const;
 type Timeframe = typeof TIMEFRAMES[number];
 
-function ChartPane({ trade }: { trade: Trade }) {
+function ChartPane({ trade, reExamRunning }: { trade: Trade; reExamRunning: boolean }) {
   const cardConfig = (trade.rawRun.agent?.adapterConfig as Record<string, unknown> | undefined)?.resultCard as ResultCardConfig | undefined;
   const [cardOpen, setCardOpen] = useState(true);
+  const [markOpen, setMarkOpen] = useState(false);
   const [chartOpen, setChartOpen] = useState(false);
   const [jsonOpen, setJsonOpen] = useState(false);
   const initialTf = (TIMEFRAMES as readonly string[]).includes(trade.timeframe) ? (trade.timeframe as Timeframe) : "4h";
@@ -239,17 +298,34 @@ function ChartPane({ trade }: { trade: Trade }) {
     trade.stopLoss !== null &&
     trade.decisionAt !== null;
 
+  // Side-tint shared by the outer container and (via embedded mode) the result card,
+  // so the panel reads as one cohesive surface rather than nested cards.
+  const sideTint =
+    trade.side === "LONG" ? "bg-emerald-500/[0.04]"
+    : trade.side === "SHORT" ? "bg-red-500/[0.04]"
+    : "bg-amber-500/[0.04]";
+  // Stronger tint for the result card section so the trade thesis reads as the
+  // colorful focal point while the rest of the pane stays supporting.
+  const cardTint =
+    trade.side === "LONG" ? "bg-emerald-500/10"
+    : trade.side === "SHORT" ? "bg-red-500/10"
+    : "bg-amber-500/10";
+  const sectionBorder = "border-foreground/[0.06]";
+  const showMark = (trade.resolutionStatus === "pending" || trade.resolutionStatus === "active") && isAutoResolveEnabled(trade.rawRun);
+
   return (
-    <div className="rounded-lg border border-border bg-card/40 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+    <div className={`rounded-lg overflow-hidden ${sideTint}`}>
+      <div className={`flex items-center justify-between px-4 py-2.5 border-b ${sectionBorder}`}>
         <div className="flex items-center gap-3 min-w-0 flex-wrap">
           <span className="text-sm font-mono font-semibold">{trade.asset}</span>
           <span className="text-[11px] font-mono text-muted-foreground">{trade.timeframe}</span>
           <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${trade.side === "LONG" ? "text-emerald-400" : trade.side === "SHORT" ? "text-red-400" : "text-amber-400"}`}>{trade.side}</span>
           <MonitoringBadge run={trade.rawRun} />
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-xs text-muted-foreground">{trade.agentName}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          {canReExamine("trade-decision", trade.resolutionStatus) && (
+            <ReExamineButton parentRunId={trade.runId} mode="stay" running={reExamRunning} />
+          )}
           <Button asChild size="sm" variant="ghost" className="h-7 gap-1 text-xs">
             <Link href={`/agents/${trade.agentId}/runs/${trade.runId}`}>
               View run <ChevronRight className="h-3.5 w-3.5" />
@@ -257,39 +333,18 @@ function ChartPane({ trade }: { trade: Trade }) {
           </Button>
         </div>
       </div>
-
-      {/* Manual entry/exit — only when auto-resolve is open (pending or active) */}
-      {(trade.resolutionStatus === "pending" || trade.resolutionStatus === "active") && isAutoResolveEnabled(trade.rawRun) && (
-        <div className="border-t border-border p-3">
-          {trade.resolutionStatus === "pending" ? (
-            <ManualTradePanel
-              runId={trade.runId}
-              mode="entry"
-              defaultPrice={trade.entry}
-              hint="Price is close but didn't quite tag the level — record the actual fill you got."
-            />
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <ManualTradePanel
-                runId={trade.runId}
-                mode="entry"
-                defaultPrice={trade.entry}
-                hint="Adjust the fill price if you got slippage on entry."
-              />
-              <ManualTradePanel
-                runId={trade.runId}
-                mode="exit"
-                defaultPrice={trade.takeProfit}
-                hint="Cutting early or filled with slippage? Record the real exit."
-              />
-            </div>
-          )}
-        </div>
+      {trade.latestReExamination && trade.latestReExamination.convictionScore !== null && (
+        <ConvictionBanner
+          score={trade.latestReExamination.convictionScore}
+          suggestedAction={trade.latestReExamination.suggestedAction}
+          href={`/agents/${trade.agentId}/runs/${trade.latestReExamination.runId}`}
+          borderClass={sectionBorder}
+        />
       )}
 
-      {/* Collapsible: result card */}
+      {/* Result card — shown first so the trade thesis sits at the top */}
       {trade.rawRun.resultJson && (
-        <div className="border-t border-border">
+        <div className={`border-t ${sectionBorder} ${cardTint}`}>
           <button
             onClick={() => setCardOpen((o) => !o)}
             className="w-full flex items-center justify-between px-4 py-2 text-left text-[11px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
@@ -297,9 +352,9 @@ function ChartPane({ trade }: { trade: Trade }) {
             <span>{cardOpen ? "▾" : "▸"} Result card</span>
           </button>
           {cardOpen && (
-            <div className="p-4 pt-1">
+            <div className="px-4 pb-4">
               {cardConfig && cardConfig.type !== "none" && cardConfig.type !== "raw" ? (
-                <ResultCard config={cardConfig} data={trade.rawRun.resultJson} />
+                <ResultCard config={cardConfig} data={trade.rawRun.resultJson} embedded />
               ) : (
                 <pre className="text-xs font-mono text-foreground/80 bg-muted/40 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-all">
                   {JSON.stringify(trade.rawRun.resultJson, null, 2)}
@@ -310,8 +365,47 @@ function ChartPane({ trade }: { trade: Trade }) {
         </div>
       )}
 
-      {/* Expandable: chart */}
-      <div className="border-t border-border">
+      {/* Mark entered / exited — collapsible, only when auto-resolve is open */}
+      {showMark && (
+        <div className={`border-t ${sectionBorder}`}>
+          <button
+            onClick={() => setMarkOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-4 py-2 text-left text-[11px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <span>{markOpen ? "▾" : "▸"} Mark {trade.resolutionStatus === "pending" ? "entered" : "entered / exited"}</span>
+          </button>
+          {markOpen && (
+            <div className="px-3 pb-3">
+              {trade.resolutionStatus === "pending" ? (
+                <ManualTradePanel
+                  runId={trade.runId}
+                  mode="entry"
+                  defaultPrice={trade.entry}
+                  hint="Price is close but didn't quite tag the level — record the actual fill you got."
+                />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <ManualTradePanel
+                    runId={trade.runId}
+                    mode="entry"
+                    defaultPrice={trade.entry}
+                    hint="Adjust the fill price if you got slippage on entry."
+                  />
+                  <ManualTradePanel
+                    runId={trade.runId}
+                    mode="exit"
+                    defaultPrice={trade.takeProfit}
+                    hint="Cutting early or filled with slippage? Record the real exit."
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Chart */}
+      <div className={`border-t ${sectionBorder}`}>
         <div className="flex items-center justify-between px-4 py-2 gap-3">
           <button
             onClick={() => setChartOpen((o) => !o)}
@@ -359,9 +453,9 @@ function ChartPane({ trade }: { trade: Trade }) {
         )}
       </div>
 
-      {/* Expandable: decision JSON */}
+      {/* Decision JSON */}
       {trade.rawRun.resultJson && (
-        <div className="border-t border-border">
+        <div className={`border-t ${sectionBorder}`}>
           <button
             onClick={() => setJsonOpen((o) => !o)}
             className="w-full flex items-center justify-between px-4 py-2 text-left text-[11px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
@@ -380,6 +474,52 @@ function ChartPane({ trade }: { trade: Trade }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function ConvictionBanner({
+  score,
+  suggestedAction,
+  href,
+  borderClass,
+}: {
+  score: number;
+  suggestedAction: string | null;
+  href: string;
+  borderClass: string;
+}) {
+  // Score drives both the value tone and the gradient weighting so a low score
+  // reads visibly red, mid amber, high green — without losing the spectrum cue.
+  const tone =
+    score >= 70 ? "text-emerald-300"
+    : score >= 40 ? "text-amber-300"
+    : "text-red-300";
+  // Marker position along the red→amber→emerald spectrum.
+  const markerPct = Math.max(0, Math.min(100, score));
+  return (
+    <div
+      className={`border-t ${borderClass} px-4 py-3 bg-gradient-to-r from-red-500/15 via-amber-500/12 to-emerald-500/15`}
+    >
+      <div className="flex items-center gap-3 text-xs flex-wrap">
+        <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-foreground/60">Latest conviction</span>
+        <span className={`font-mono font-bold text-base ${tone}`}>{score}</span>
+        {suggestedAction && (
+          <span className="text-[10px] font-mono uppercase tracking-wider text-foreground/70">
+            · suggests {suggestedAction}
+          </span>
+        )}
+        <Link href={href} className="text-[11px] text-blue-300 hover:text-blue-200 hover:underline ml-auto">
+          View re-examination →
+        </Link>
+      </div>
+      {/* Slim spectrum bar with a marker showing where this conviction sits */}
+      <div className="relative mt-2 h-1 rounded-full bg-gradient-to-r from-red-500/60 via-amber-500/60 to-emerald-500/60 overflow-visible">
+        <div
+          className="absolute -top-0.5 h-2 w-0.5 bg-foreground/80 rounded-full shadow"
+          style={{ left: `calc(${markerPct}% - 1px)` }}
+        />
+      </div>
     </div>
   );
 }
@@ -421,7 +561,7 @@ function isAutoResolveEnabled(run: HeartbeatRun): boolean {
   return card.autoResolve?.enabled !== false;
 }
 
-function toTrade(run: HeartbeatRun): Trade {
+function toTrade(run: HeartbeatRun, latestReExamination: Trade["latestReExamination"]): Trade {
   const result = (run.resultJson ?? {}) as Record<string, unknown>;
   const adapter = (run.agent?.adapterConfig ?? {}) as Record<string, unknown>;
   const card = adapter.resultCard as { type?: string; mapping?: Record<string, string> } | undefined;
@@ -473,6 +613,7 @@ function toTrade(run: HeartbeatRun): Trade {
     hitAt,
     exitPrice,
     createdAt: run.createdAt,
+    latestReExamination,
     rawRun: run,
   };
 }

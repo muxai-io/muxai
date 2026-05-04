@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.7] - 2026-05-04
+
+### Added
+
+- **Re-examination** — generic primitive for re-evaluating a prior decision over its lifetime. Triggered from a **Re-examine** button on the run detail page or, for trade decisions, the trade card on `/results/trade-decisions`. Spawns a new full-council run anchored to the parent via `HeartbeatRun.parentRunId`, producing a structured update without mutating the original `resultJson`
+- New `re-examination` result-card type with three required slots (`target_run_id`, `conviction_score` 0–100, `notes`) and optional `suggested_action`, `watch_for_review`, `event_verdict` — generic shape, no trade-specific fields baked in
+- `CardDefinition` gains two opt-in fields: `reExaminable: true | "until_resolved"` controls button visibility; `reExamineActions: string[]` declares the action vocabulary inlined into the prompt. Trade-decision sets `"until_resolved"` + `["HOLD", "CLOSE", "SCALE"]`
+- `apps/api/src/services/re-examine-prompt.ts` — pure function that builds the runtime prompt from any parent run's resolved slot values. Authoritative ("disregard prior format instructions") so re-examination works on any agent without SKILL.md cooperation. Card-agnostic loop over slots; trade-flavored richness (e.g. `watch_for_review`) emerges naturally from parents that have a `watch_for` slot
+- `POST /api/runs/:id/re-examine` — validates the parent has a resultJson and is re-examinable (respecting `until_resolved` for active trades), builds the prompt, invokes the same agent with `parentRunId` set
+- `GET /api/runs/:id/re-examinations` — chronological list of child re-examinations for a parent
+- `HeartbeatRun.parentRunId` self-FK + index, with `parent` / `reExaminations` self-relations
+- `invokeAgent` (`apps/api/src/services/heartbeat.ts`) accepts `{ parentRunId, invocationSource, reason }` so callers can attribute spawn metadata
+- `ReExamineButton` (`apps/web/src/components/re-examine-button.tsx`) with two modes: `"navigate"` (default, jumps to the new run) and `"stay"` (refreshes the current page). Tracks in-flight state via a `running` prop, polls every 4s while a re-examination is active, holds local busy until the parent confirms the new run is tracked, with an 8s safety timeout
+- Run detail page (`apps/web/src/app/agents/[id]/runs/[runId]/page.tsx`) — Re-examine button on eligible parent runs; "Re-examines runId X" backlink card on child runs; **Conviction history** list under parents showing each child's score (color-coded), suggested action, and notes; card resolution automatically overrides to `re-examination` whenever `parentRunId` is set
+- Trade-decisions terminal — re-examinations filtered off the blotter (parents are the trades); latest conviction surfaced inline as `conv 28 · CLOSE` on the blotter row; **Latest conviction** banner in the chart pane with a red→amber→emerald gradient background and a spectrum marker showing where the score sits
+- **Mark entered / exited** moved into a collapsible section in the chart pane (default closed), matching the Result Card / Chart / Decision JSON pattern
+- `ResultCard` gains an `embedded` prop — strips the wrapper border/bg/padding so the card sits flat on its parent's tinted surface, used by the trade-decisions chart pane for a single-surface look
+- Object list items in `ResultCard` (e.g. `watch_for_review` entries) render with a status pill (`played_out` emerald / `failed` red / `pending` amber) and the evidence sentence underneath, instead of stringifying to `[object Object]`
+
 ## [0.1.6] - 2026-04-30
 
 ### Added

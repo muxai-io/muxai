@@ -2,12 +2,24 @@ import { Router } from "express";
 import { prisma, Prisma } from "../lib/db";
 import { onRunEvent } from "../services/run-events";
 import { resolveTradeFromCandles, type TradeSide } from "../services/trade-resolver";
+import { invokeAgent } from "../services/heartbeat";
+import { buildReExaminePrompt } from "../services/re-examine-prompt";
+
+// Card types whose runs can be re-examined. Mirrors the `reExaminable` field
+// in apps/web/src/lib/result-cards.ts — keep in sync until extracted.
+// Values: true = always allowed; "until_resolved" = only while resolutionStatus
+// is active/pending; absent = not re-examinable.
+const RE_EXAMINABLE_CARD_TYPES: Record<string, true | "until_resolved"> = {
+  "trade-decision": "until_resolved",
+};
 
 export const runRoutes = Router();
 
 // GET /api/runs — recent runs across all agents
 // ?persistedOnly=true  — only runs from agents with persistLogs: true in adapterConfig
-// ?withResults=true    — only runs that have a resultJson captured
+// ?withResults=true    — runs that have a resultJson captured, OR in-flight
+//                        re-examinations (so consumers can show "Running…" UI
+//                        for child runs that haven't produced output yet)
 runRoutes.get("/", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 20, 100);
   const persistedOnly = req.query.persistedOnly === "true";
@@ -16,7 +28,14 @@ runRoutes.get("/", async (req, res) => {
   const runs = await prisma.heartbeatRun.findMany({
     where: {
       ...(persistedOnly ? { agent: { adapterConfig: { path: ["persistLogs"], equals: true } } } : {}),
-      ...(withResults ? { resultJson: { not: Prisma.DbNull } } : {}),
+      ...(withResults
+        ? {
+            OR: [
+              { resultJson: { not: Prisma.DbNull } },
+              { parentRunId: { not: null }, status: { in: ["running", "queued"] } },
+            ],
+          }
+        : {}),
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -40,6 +59,16 @@ runRoutes.get("/:id", async (req, res) => {
     return;
   }
   res.json(run);
+});
+
+// GET /api/runs/:id/re-examinations — child re-examination runs of a parent
+runRoutes.get("/:id/re-examinations", async (req, res) => {
+  const runs = await prisma.heartbeatRun.findMany({
+    where: { parentRunId: req.params.id },
+    orderBy: { createdAt: "asc" },
+    include: { agent: { select: { id: true, name: true, role: true, adapterConfig: true } } },
+  });
+  res.json(runs);
 });
 
 // POST /api/runs/:id/outcome — mark the outcome of a run (user-initiated)
@@ -79,6 +108,64 @@ runRoutes.post("/:id/outcome", async (req, res) => {
     select: { id: true, outcome: true, outcomeFields: true, outcomeAt: true },
   });
   res.json(updated);
+});
+
+// POST /api/runs/:id/re-examine — invoke the same agent that produced this run
+// to re-evaluate its conclusion. Generic: works on any run whose card type is
+// declared re-examinable. The new run is linked to the parent via parentRunId
+// and produces a `re-examination` card.
+runRoutes.post("/:id/re-examine", async (req, res) => {
+  const parent = await prisma.heartbeatRun.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      agentId: true,
+      finishedAt: true,
+      resultJson: true,
+      resolutionStatus: true,
+      agent: { select: { status: true, adapterConfig: true } },
+    },
+  });
+  if (!parent) { res.status(404).json({ error: "Run not found" }); return; }
+  if (!parent.resultJson) { res.status(400).json({ error: "Run has no result to re-examine" }); return; }
+
+  const adapter = (parent.agent?.adapterConfig ?? {}) as Record<string, unknown>;
+  const card = adapter.resultCard as { type?: string; mapping?: Record<string, string> } | undefined;
+  const cardType = card?.type;
+  if (!cardType) { res.status(400).json({ error: "Parent agent has no result card configured" }); return; }
+
+  const allowed = RE_EXAMINABLE_CARD_TYPES[cardType];
+  if (!allowed) {
+    res.status(400).json({ error: `Card type "${cardType}" is not re-examinable` });
+    return;
+  }
+  if (allowed === "until_resolved") {
+    const status = parent.resolutionStatus;
+    if (status !== "active" && status !== "pending") {
+      res.status(400).json({ error: `Cannot re-examine — parent run is no longer active (status: ${status ?? "none"})` });
+      return;
+    }
+  }
+
+  if (parent.agent?.status === "running") {
+    res.status(409).json({ error: "Agent is already running" });
+    return;
+  }
+
+  const prompt = buildReExaminePrompt({
+    parentRunId: parent.id,
+    parentCardType: cardType,
+    parentResultJson: parent.resultJson as Record<string, unknown>,
+    parentMapping: card?.mapping ?? {},
+    parentDecidedAt: parent.finishedAt,
+  });
+
+  const run = await invokeAgent(parent.agentId, prompt, {
+    parentRunId: parent.id,
+    invocationSource: "re_examine",
+    reason: `re-examine of run ${parent.id}`,
+  });
+  res.status(202).json(run);
 });
 
 // POST /api/runs/:id/manual-entry — user marks the trade as entered (real fill)

@@ -51,11 +51,14 @@ Every agent run is recorded in the database as a `HeartbeatRun` with:
 - Outcome label and custom fields (user-marked after the fact — e.g. Win / Loss / NA plus pnl, note)
 - Timestamps and exit code
 - Session ID (for resume support)
+- Optional `parentRunId` linking the run to a prior decision being re-examined (see [Memory & Decisions](/core-concepts/memory-and-decisions#re-examination))
 
-View an agent's runs from its detail page or the **Runs** tab. Each run shows the complete log and, if available, a formatted result card. You can mark a run's outcome from its detail page; trading agents with `reviewDecisions` will see these outcomes on their next run via `get_my_decisions`.
+View an agent's runs from its detail page or the **Runs** tab. Each run shows the complete log and, if available, a formatted result card. You can mark a run's outcome from its detail page; trading agents with `reviewDecisions` will see these outcomes on their next run via `get_my_decisions`. Parent runs that have been re-examined show a **Conviction history** list of their child re-examinations underneath the result card.
 
 ## Results
 
 The **Results** page (`/results`) shows all runs that produced structured JSON output. Each result is rendered as a card based on the agent's `resultCard` configuration (e.g. Trade Decision, Research Summary, Alert).
+
+For trade decisions specifically, `/results/trade-decisions` is a dedicated terminal with a blotter, candle chart with entry/TP/SL overlays, and per-trade controls. Re-examination runs don't appear as standalone rows — their latest conviction score and suggested action are surfaced inline on the parent trade row, and the **Re-examine** button on each active trade lets you trigger a fresh full-council re-evaluation without leaving the page.
 
 The Dashboard also shows the latest result from your most recent run.

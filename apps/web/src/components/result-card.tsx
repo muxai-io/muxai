@@ -37,6 +37,60 @@ function TagPill({ value }: { value: unknown }) {
   );
 }
 
+function ListItem({ item, accent }: { item: unknown; accent: string }) {
+  // String items render plainly. Object items (e.g. watch_for_review entries:
+  // { item, status, evidence }) render with status as a small pill and the
+  // descriptive text alongside. Falls back to JSON if the shape is unexpected.
+  if (item == null) return null;
+  if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+    return (
+      <li className="text-sm text-muted-foreground flex gap-1.5">
+        <span className={`${accent} shrink-0`}>·</span>
+        <span>{String(item)}</span>
+      </li>
+    );
+  }
+  if (typeof item === "object" && !Array.isArray(item)) {
+    const obj = item as Record<string, unknown>;
+    const label = typeof obj.item === "string" ? obj.item
+      : typeof obj.label === "string" ? obj.label
+      : typeof obj.title === "string" ? obj.title
+      : null;
+    const status = typeof obj.status === "string" ? obj.status : null;
+    const evidence = typeof obj.evidence === "string" ? obj.evidence
+      : typeof obj.note === "string" ? obj.note
+      : null;
+    if (label || status || evidence) {
+      const statusTone = status === "played_out" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+        : status === "failed" ? "bg-red-500/15 text-red-400 border-red-500/30"
+        : status === "pending" ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+        : "bg-muted/30 text-muted-foreground border-border";
+      return (
+        <li className="text-sm flex gap-2 items-start">
+          <span className={`${accent} shrink-0 mt-0.5`}>·</span>
+          <div className="flex-1 space-y-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              {status && (
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border ${statusTone}`}>
+                  {status.replace(/_/g, " ")}
+                </span>
+              )}
+              {label && <span className="text-muted-foreground">{label}</span>}
+            </div>
+            {evidence && <div className="text-xs text-muted-foreground/80 italic">{evidence}</div>}
+          </div>
+        </li>
+      );
+    }
+  }
+  return (
+    <li className="text-sm text-muted-foreground flex gap-1.5 font-mono">
+      <span className={`${accent} shrink-0`}>·</span>
+      <span className="break-all">{JSON.stringify(item)}</span>
+    </li>
+  );
+}
+
 function DeltaValue({ value }: { value: unknown }) {
   if (value == null) return null;
   const s = String(value);
@@ -51,7 +105,7 @@ function DeltaValue({ value }: { value: unknown }) {
 
 // ─── Generic card ────────────────────────────────────────────────────────────
 
-export function ResultCard({ config, data }: { config: ResultCardConfig; data: Record<string, unknown> }) {
+export function ResultCard({ config, data, embedded }: { config: ResultCardConfig; data: Record<string, unknown>; embedded?: boolean }) {
   const def = getCardDefinition(config.type);
   if (!def) {
     return (
@@ -81,7 +135,7 @@ export function ResultCard({ config, data }: { config: ResultCardConfig; data: R
   const hasHighlight = highlightSlot && resolve(highlightSlot) != null;
 
   return (
-    <div className={`rounded-xl border p-4 space-y-3 ${theme.bg}`}>
+    <div className={embedded ? "space-y-3" : `rounded-xl border p-4 space-y-3 ${theme.bg}`}>
       {/* Header: badges + title + subtitle + tags */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -150,11 +204,9 @@ export function ResultCard({ config, data }: { config: ResultCardConfig; data: R
         return (
           <div key={s.key}>
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{s.label}</p>
-            <ul className="space-y-0.5">
+            <ul className="space-y-1">
               {val.map((item, i) => (
-                <li key={i} className="text-sm text-muted-foreground flex gap-1.5">
-                  <span className={`${theme.color} shrink-0`}>·</span>{String(item)}
-                </li>
+                <ListItem key={i} item={item} accent={theme.color} />
               ))}
             </ul>
           </div>

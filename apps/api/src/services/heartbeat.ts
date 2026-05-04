@@ -75,7 +75,11 @@ export async function buildInvokeInfo(agentId: string) {
  * Invoke an agent. Creates DB records, delegates to the adapter for
  * spawning, then wires up stream parsing, logging, and notifications.
  */
-export async function invokeAgent(agentId: string, promptOverride?: string) {
+export async function invokeAgent(
+  agentId: string,
+  promptOverride?: string,
+  opts: { parentRunId?: string; invocationSource?: string; reason?: string } = {},
+) {
   const agent = await prisma.agent.findUniqueOrThrow({
     where: { id: agentId },
     include: { reports: { select: { id: true, name: true, role: true, adapterConfig: true } } },
@@ -84,7 +88,13 @@ export async function invokeAgent(agentId: string, promptOverride?: string) {
 
   // Create wakeup + run records
   const wakeup = await prisma.wakeupRequest.create({
-    data: { agentId, source: "on_demand", reason: "manual invoke", status: "claimed", claimedAt: new Date() },
+    data: {
+      agentId,
+      source: opts.invocationSource ?? "on_demand",
+      reason: opts.reason ?? "manual invoke",
+      status: "claimed",
+      claimedAt: new Date(),
+    },
   });
 
   // Resolve --resume session if Active Memory is enabled for this agent
@@ -101,10 +111,11 @@ export async function invokeAgent(agentId: string, promptOverride?: string) {
     data: {
       agentId,
       status: "running",
-      invocationSource: "on_demand",
+      invocationSource: opts.invocationSource ?? "on_demand",
       startedAt: new Date(),
       wakeupRequestId: wakeup.id,
       sessionIdBefore: resumeSessionId ?? null,
+      parentRunId: opts.parentRunId ?? null,
     },
   });
 

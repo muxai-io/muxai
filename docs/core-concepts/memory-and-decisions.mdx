@@ -5,12 +5,13 @@ description: "How an agent remembers chat, prior runs, and past decisions — an
 
 ## Overview
 
-An agent remembers things in two independent ways. They can be used together or separately.
+An agent remembers things in three independent ways. They can be used together or separately.
 
 | Mechanism | What it carries | Cost per run |
 |-----------|------------------|--------------|
 | **Active Memory** | Full conversation transcript (chat + prior runs) | Grows over time |
 | **Review Previous Decisions** | Structured summary of the last ~5 decision cards | Low — one tool call |
+| **Re-examination** | A new full run that updates conviction on a specific prior decision | One full run |
 
 ## Active Memory
 
@@ -73,6 +74,43 @@ Use this when:
 
 The agent sees clean entries like `2d ago · WAIT · range unresolved` rather than re-reading its own conversations.
 
+## Re-examination
+
+A re-examination is a fresh full run of the same agent, anchored to a specific prior decision. The agent re-runs whatever analysis it normally does (full council for a lead agent), then produces a `re-examination` card with three required fields:
+
+| Field | Meaning |
+|-------|---------|
+| `conviction_score` | 0–100. 0 = original conclusion fully invalidated, 100 = fully confirmed. |
+| `notes` | One sentence on what changed since the original decision. |
+| `suggested_action` | Domain-specific advisory string (e.g. `HOLD` / `CLOSE` / `SCALE` for trade decisions). Advisory only — the user decides whether to act on it. |
+
+### When to use it
+
+- A trade is open and you want a fresh read on whether the thesis is still valid
+- A research thesis was published days ago and you want to confirm or revise it
+- Any decision with a lifetime that benefits from periodic re-evaluation
+
+### How it works
+
+Triggered by clicking **Re-examine** on a parent run — either on the run detail page or, for trade decisions, directly on the trade card in `/results/trade-decisions`. The platform builds a self-contained prompt server-side from the parent's structured slot values (entry, TP, SL, watch_for items, etc.) and invokes the same agent with `parentRunId` set on the new run. The prompt is authoritative — it overrides the agent's normal output format without requiring any SKILL.md cooperation, so re-examination works on any agent including custom ones.
+
+The new run renders as a `re-examination` card. The parent run gains a chronological **Conviction history** list of all its re-examinations underneath, and trade-decision rows on the results page surface the latest conviction score inline.
+
+### Which card types support it
+
+A card type opts in via two optional fields on its `CardDefinition`:
+
+- `reExaminable: true | "until_resolved"` — controls whether the **Re-examine** button shows. `"until_resolved"` (used by `trade-decision`) hides the button once the run's `resolutionStatus` becomes resolved or expired, so closed trades aren't re-examined.
+- `reExamineActions: string[]` — the action vocabulary inlined into the prompt for `suggested_action`. Trade-decision declares `["HOLD", "CLOSE", "SCALE"]`. Without this, the model is allowed any short uppercase string.
+
+The re-examination machinery itself is generic — adding a new re-examinable card type is a config change, not a code change.
+
+### What stays the same
+
+- The original decision's `resultJson` is **never modified**. The re-examination is an annotation that lives on its own run, linked via `parentRunId`.
+- Auto-resolve behavior is unaffected. A re-examination's `suggested_action: "CLOSE"` is advisory — the original trade keeps tracking until SL/TP hits or you manually mark it exited. The user remains the source of truth on whether to actually close a position.
+- Council agents are not told about the open position. Specialists analyze the asset blind so their fresh read isn't anchored to the existing exposure; the lead reconciles the view with the prior decision.
+
 ## Quick reference
 
 | | Memory off | Memory on | Review Decisions |
@@ -122,3 +160,4 @@ Enabling memory and resetting memory have the same effect: fresh session, counte
 | `HeartbeatRun.sessionIdAfter` | Session id Claude emitted on completion. Used to count "successful runs since reset". |
 | `Agent.adapterConfig.memoryEnabled` | Per-agent toggle. Off by default. |
 | `Agent.adapterConfig.reviewDecisions` | Independent per-agent toggle for structured decision fetch. |
+| `HeartbeatRun.parentRunId` | Set on re-examination runs. Points at the original decision being re-evaluated. Children are queried via `GET /api/runs/:id/re-examinations`. |

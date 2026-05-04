@@ -38,5 +38,6 @@ export interface HeartbeatRun {
   resolutionStatus: "pending" | "active" | "resolved" | "expired" | null;
   resolutionCheckedAt: string | null;
   resolutionMeta: Record<string, unknown> | null;
+  parentRunId: string | null;
   createdAt: string;
 }

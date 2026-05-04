@@ -94,8 +94,15 @@ model HeartbeatRun {
   wakeupRequestId  String?
   wakeupRequest    WakeupRequest? @relation(fields: [wakeupRequestId], references: [id])
 
+  // Re-examination link — when set, this run is a re-evaluation of `parent`.
+  // Children render as a chronological conviction history under the parent.
+  parentRunId      String?
+  parent           HeartbeatRun?  @relation("Reexaminations", fields: [parentRunId], references: [id], onDelete: SetNull)
+  reExaminations   HeartbeatRun[] @relation("Reexaminations")
+
   createdAt        DateTime @default(now())
 
+  @@index([parentRunId])
   @@map("heartbeat_runs")
 }
 

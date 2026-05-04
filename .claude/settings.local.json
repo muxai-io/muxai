@@ -12,7 +12,12 @@
       "WebFetch(domain:docs.elfa.ai)",
       "Bash(pnpm --filter @muxai/api test:integration)",
       "Bash(pnpm --filter @muxai/web build)",
-      "Bash(pnpm --filter @muxai/api run test:integration)"
+      "Bash(pnpm --filter @muxai/api run test:integration)",
+      "Bash(pnpm -F @muxai/api db:push)",
+      "Bash(pnpm -F @muxai/api exec prisma generate)",
+      "Bash(pnpm -F @muxai/api typecheck)",
+      "Bash(pnpm -r test)",
+      "Bash(pnpm -F @muxai/web typecheck)"
     ]
   }
 }

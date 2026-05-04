@@ -24,6 +24,8 @@ When a lead agent has reporters, muxAI automatically injects two MCP tools and a
 
 Agents with `reviewDecisions` enabled (trading templates by default) also get `get_my_decisions`. It returns the agent's recent structured decisions along with any user-marked outcomes (win / loss / custom label, plus free-form fields like pnl or note) and a running win/loss tally. The injected system prompt nudges the agent to reflect on past outcomes before its next decision.
 
+For updating the conviction on a *specific* prior decision rather than starting a fresh one, see [Re-examination](/core-concepts/memory-and-decisions#re-examination) — a separate user-triggered flow that anchors a new full-council run to a parent decision and produces a `re-examination` card with an updated conviction score.
+
 ## When to use which
 
 | Scenario | Tool | Why |
